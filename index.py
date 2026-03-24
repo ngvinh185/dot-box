@@ -2,6 +2,7 @@ import pygame
 import random
 import math
 import os
+import json
 from PIL import Image, ImageSequence
 from gamelogic import GameState
 
@@ -16,23 +17,28 @@ AI = 1
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 820
 
+# ===== THEME SÁNG HƠN + DỊU HƠN =====
 THEME = {
-    "bg": (14, 16, 26),
-    "grid": (28, 32, 48),
-    "panel": (22, 24, 36),
-    "panel2": (30, 34, 50),
-    "text": (245, 245, 255),
-    "subtext": (180, 185, 210),
-    "player": (255, 105, 180),
-    "ai": (80, 200, 255),
-    "accent": (180, 120, 255),
-    "accent2": (255, 180, 220),
-    "success": (120, 255, 180),
-    "danger": (255, 90, 120),
+    "bg": (238, 244, 255),          # nền tổng thể sáng xanh nhạt
+    "grid": (214, 224, 244),        # lưới nền sáng
+    "panel": (248, 251, 255),       # panel trắng xanh rất nhạt
+    "panel2": (226, 236, 255),      # button / panel phụ
+    "text": (38, 48, 74),           # chữ chính đậm dễ đọc
+    "subtext": (100, 114, 145),     # chữ phụ
+    "player": (255, 120, 170),      # hồng sáng
+    "ai": (95, 180, 255),           # xanh sáng
+    "accent": (125, 145, 255),      # xanh tím dịu
+    "accent2": (255, 182, 220),     # glow hồng nhạt
+    "success": (88, 198, 145),      # xanh lá dịu
+    "danger": (255, 112, 130),      # đỏ dịu
+    "shadow": (180, 194, 224),      # bóng sáng mềm
+    "board_line": (176, 194, 230),  # line chưa đánh trên board
+    "overlay": (90, 110, 160),      # overlay sáng nhẹ
 }
 
 MAX_RIPPLES = 6
 MAX_PARTICLES = 24
+HIGHSCORE_FILE = "highscores.json"
 
 # =========================
 # HELPERS
@@ -85,6 +91,11 @@ def draw_text_center(surface, text, font, color, center, glow=False, glow_color=
     rect = img.get_rect(center=(cx, cy))
     surface.blit(img, rect)
 
+def draw_text_left(surface, text, font, color, pos):
+    img = get_text_surface(font, text, color)
+    rect = img.get_rect(topleft=(int(pos[0]), int(pos[1])))
+    surface.blit(img, rect)
+
 def draw_round_rect(surface, rect, color, radius=20):
     pygame.draw.rect(surface, color, rect, border_radius=radius)
 
@@ -114,16 +125,20 @@ class Button:
     def draw(self, surface):
         inflate = int(6 * self.scale_t)
         r = self.rect.inflate(inflate, inflate)
+
         shadow = r.copy()
         shadow.y += 5
-        pygame.draw.rect(surface, (8, 8, 16), shadow, border_radius=24)
+        pygame.draw.rect(surface, THEME["shadow"], shadow, border_radius=24)
+
         c = (
             int(lerp(self.base_color[0], self.hover_color[0], self.scale_t)),
             int(lerp(self.base_color[1], self.hover_color[1], self.scale_t)),
             int(lerp(self.base_color[2], self.hover_color[2], self.scale_t)),
         )
+
         draw_round_rect(surface, r, c, 24)
         draw_round_rect_outline(surface, r, (255, 255, 255), 2, 24)
+
         if self.font:
             draw_text_center(
                 surface, self.text, self.font, self.text_color, r.center,
@@ -143,9 +158,8 @@ class Button:
 class GameUI:
     def __init__(self):
         pygame.init()
-        pygame.display.set_caption("DOTS & BOXES - NEON")
+        pygame.display.set_caption("DOTS & BOXES")
 
-        # FIX 1: bỏ fullscreen -> dùng window thường
         self.width = WINDOW_WIDTH
         self.height = WINDOW_HEIGHT
         self.screen = pygame.display.set_mode((self.width, self.height))
@@ -156,15 +170,18 @@ class GameUI:
         self.font_big = pygame.font.SysFont("arial", max(30, self.width // 40), bold=True)
         self.font_mid = pygame.font.SysFont("arial", max(22, self.width // 60), bold=True)
         self.font_small = pygame.font.SysFont("arial", max(18, self.width // 80))
+        self.font_tiny = pygame.font.SysFont("arial", max(16, self.width // 90))
 
         # State
         self.state = "LOADING"
+        self.prev_state = None
         self.running = True
         self.buttons = []
 
         # Game
         self.game = None
         self.mode = None
+        self.difficulty = "hard"
         self.game_over = False
         self.ai_thinking = False
         self.current_turn = PLAYER
@@ -214,9 +231,16 @@ class GameUI:
         # Frame rects
         self.frame_loading = None
         self.frame_menu = None
+        self.frame_diff = None
         self.frame_size = None
         self.frame_game = None
         self.frame_gameover = None
+
+        # In-game back button
+        self.back_button_game = None
+
+        # High score
+        self.highscores = self.load_highscores()
 
         self.build_bg_surface()
         self.build_frames()
@@ -231,6 +255,54 @@ class GameUI:
         self.change_state("LOADING")
 
     # =========================
+    # HIGHSCORE
+    # =========================
+    def load_highscores(self):
+        if not os.path.exists(HIGHSCORE_FILE):
+            return {}
+        try:
+            with open(HIGHSCORE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+            return {}
+        except Exception:
+            return {}
+
+    def save_highscores(self):
+        try:
+            with open(HIGHSCORE_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.highscores, f, indent=2)
+        except Exception:
+            pass
+
+    def get_score_key(self, mode=None, difficulty=None):
+        if mode is None:
+            mode = self.mode
+        if difficulty is None:
+            difficulty = self.difficulty
+        if not mode:
+            return None
+        rows, cols = mode
+        return f"{rows}x{cols}_{difficulty}"
+
+    def get_highscore(self, mode=None, difficulty=None):
+        key = self.get_score_key(mode, difficulty)
+        if key is None:
+            return 0
+        return int(self.highscores.get(key, 0))
+
+    def update_highscore(self):
+        if not self.mode or not self.game:
+            return
+        key = self.get_score_key()
+        cur = self.game.score['player']
+        old = self.highscores.get(key, 0)
+        if cur > old:
+            self.highscores[key] = cur
+            self.save_highscores()
+
+    # =========================
     # FRAME LAYOUTS
     # =========================
     def build_frames(self):
@@ -239,40 +311,47 @@ class GameUI:
         pad_y = 80
 
         self.frame_loading = pygame.Rect(
-            W // 2 - min(640, W - pad_x) // 2,
-            H // 2 - min(460, H - pad_y) // 2,
-            min(640, W - pad_x),
-            min(460, H - pad_y)
+            W // 2 - min(660, W - pad_x) // 2,
+            H // 2 - min(480, H - pad_y) // 2,
+            min(660, W - pad_x),
+            min(480, H - pad_y)
         )
 
         self.frame_menu = pygame.Rect(
-            W // 2 - min(700, W - pad_x) // 2,
-            H // 2 - min(500, H - pad_y) // 2,
-            min(700, W - pad_x),
-            min(500, H - pad_y)
+            W // 2 - min(740, W - pad_x) // 2,
+            H // 2 - min(540, H - pad_y) // 2,
+            min(740, W - pad_x),
+            min(540, H - pad_y)
+        )
+
+        self.frame_diff = pygame.Rect(
+            W // 2 - min(740, W - pad_x) // 2,
+            H // 2 - min(620, H - pad_y) // 2,
+            min(740, W - pad_x),
+            min(620, H - pad_y)
         )
 
         self.frame_size = pygame.Rect(
-            W // 2 - min(700, W - pad_x) // 2,
-            H // 2 - min(560, H - pad_y) // 2,
-            min(700, W - pad_x),
-            min(560, H - pad_y)
+            W // 2 - min(740, W - pad_x) // 2,
+            H // 2 - min(680, H - pad_y) // 2,
+            min(740, W - pad_x),
+            min(680, H - pad_y)
         )
 
         game_w = min(1080, W - 120)
         game_h = min(620, H - 180)
         self.frame_game = pygame.Rect(
             W // 2 - game_w // 2,
-            H // 2 - game_h // 2 + 35,
+            H // 2 - game_h // 2 + 45,
             game_w,
             game_h
         )
 
         self.frame_gameover = pygame.Rect(
-            W // 2 - min(680, W - 120) // 2,
-            H // 2 - min(400, H - 140) // 2,
-            min(680, W - 120),
-            min(400, H - 140)
+            W // 2 - min(700, W - 120) // 2,
+            H // 2 - min(470, H - 140) // 2,
+            min(700, W - 120),
+            min(470, H - 140)
         )
 
     # =========================
@@ -299,7 +378,7 @@ class GameUI:
         self.board_static_rect = panel.copy()
         surf = pygame.Surface((panel.w, panel.h), pygame.SRCALPHA)
 
-        draw_round_rect(surf, pygame.Rect(0, 0, panel.w, panel.h), (18, 20, 30), 28)
+        draw_round_rect(surf, pygame.Rect(0, 0, panel.w, panel.h), THEME["panel"], 28)
         draw_round_rect_outline(surf, pygame.Rect(0, 0, panel.w, panel.h), (255, 255, 255), 2, 28)
 
         for r in range(rows + 1):
@@ -307,7 +386,7 @@ class GameUI:
                 p1 = self.get_dot_pos(r, c)
                 p2 = self.get_dot_pos(r, c + 1)
                 pygame.draw.line(
-                    surf, (50, 55, 75),
+                    surf, THEME["board_line"],
                     (p1[0] - panel.x, p1[1] - panel.y),
                     (p2[0] - panel.x, p2[1] - panel.y), 3
                 )
@@ -317,7 +396,7 @@ class GameUI:
                 p1 = self.get_dot_pos(r, c)
                 p2 = self.get_dot_pos(r + 1, c)
                 pygame.draw.line(
-                    surf, (50, 55, 75),
+                    surf, THEME["board_line"],
                     (p1[0] - panel.x, p1[1] - panel.y),
                     (p2[0] - panel.x, p2[1] - panel.y), 3
                 )
@@ -405,55 +484,119 @@ class GameUI:
     # STATE
     # =========================
     def change_state(self, new_state):
+        if self.state != "LOADING":
+            self.prev_state = self.state
+
         self.state = new_state
         self.buttons.clear()
+        self.back_button_game = None
 
         if new_state == "LOADING":
             return
 
         if new_state == "MENU":
             bw = min(320, self.frame_menu.w // 2)
-            bh = 64
-            gap = 20
-            rects = stack_center_rects(self.frame_menu, [(bw, bh), (bw, bh)], gap=gap, offset_y=70)
+            bh = 68
+            gap = 26
+            rects = stack_center_rects(self.frame_menu, [(bw, bh), (bw, bh)], gap=gap, offset_y=88)
             self.buttons = [
-                Button(rects[0], "PLAY VS AI", self.goto_size, font=self.font_mid),
+                Button(rects[0], "PLAY VS AI", self.goto_difficulty, font=self.font_mid),
                 Button(rects[1], "EXIT", self.exit_game,
-                       base_color=(70, 40, 50), hover_color=THEME["danger"], font=self.font_mid),
+                       base_color=(255, 226, 232), hover_color=THEME["danger"], font=self.font_mid),
+            ]
+
+        elif new_state == "DIFFICULTY":
+            bw = min(350, self.frame_diff.w // 2)
+            bh = 62
+            gap = 22
+            rects = stack_center_rects(
+                self.frame_diff,
+                [(bw, bh), (bw, bh), (bw, bh), (160, 52)],
+                gap=gap, offset_y=78
+            )
+            self.buttons = [
+                Button(rects[0], "EASY", lambda: self.set_difficulty_and_goto_size("easy"), font=self.font_mid),
+                Button(rects[1], "MEDIUM", lambda: self.set_difficulty_and_goto_size("medium"), font=self.font_mid),
+                Button(rects[2], "HARD", lambda: self.set_difficulty_and_goto_size("hard"), font=self.font_mid),
+                Button(rects[3], "BACK", self.go_back, font=self.font_small),
             ]
 
         elif new_state == "SIZE":
-            bw = min(340, self.frame_size.w // 2)
-            bh = 62
-            gap = 16
+            bw = min(350, self.frame_size.w // 2)
+            bh = 60
+            gap = 22
             rects = stack_center_rects(
                 self.frame_size,
-                [(bw, bh), (bw, bh), (bw, bh), (150, 50)],
-                gap=gap, offset_y=45
+                [(bw, bh), (bw, bh), (bw, bh), (160, 52)],
+                gap=gap, offset_y=86
             )
             self.buttons = [
                 Button(rects[0], "3 x 4", lambda: self.start_game((3, 4)), font=self.font_mid),
                 Button(rects[1], "4 x 5", lambda: self.start_game((4, 5)), font=self.font_mid),
                 Button(rects[2], "5 x 6", lambda: self.start_game((5, 6)), font=self.font_mid),
-                Button(rects[3], "BACK", self.goto_menu, font=self.font_small),
+                Button(rects[3], "BACK", self.go_back, font=self.font_small),
             ]
 
+        elif new_state == "GAME":
+            self.back_button_game = Button(
+                pygame.Rect(self.width - 160, self.frame_game.bottom + 22, 125, 42),
+                "BACK",
+                self.go_back_from_game,
+                font=self.font_small
+            )
+
         elif new_state == "GAMEOVER":
-            bw = min(300, self.frame_gameover.w // 2)
-            bh = 62
+            bw = min(310, self.frame_gameover.w // 2)
+            bh = 60
             gap = 18
             rects = stack_center_rects(
-                self.frame_gameover, [(bw, bh), (bw, bh)], gap=gap, offset_y=78
+                self.frame_gameover, [(bw, bh), (bw, bh), (160, 50)], gap=gap, offset_y=102
             )
             self.buttons = [
                 Button(rects[0], "PLAY AGAIN", lambda: self.start_game(self.mode), font=self.font_mid),
                 Button(rects[1], "MENU", self.goto_menu, font=self.font_mid),
+                Button(rects[2], "BACK", self.go_back, font=self.font_small),
             ]
 
     def goto_menu(self):
         self.change_state("MENU")
 
+    def goto_difficulty(self):
+        self.change_state("DIFFICULTY")
+
     def goto_size(self):
+        self.change_state("SIZE")
+
+    def set_difficulty_and_goto_size(self, diff):
+        self.difficulty = diff
+        self.change_state("SIZE")
+
+    def go_back(self):
+        if self.state == "GAMEOVER":
+            self.state = "GAME"
+            self.game_over = False
+            self.ai_thinking = False
+            self.input_locked = False
+            self.change_state("GAME")
+            return
+
+        if self.state == "SIZE":
+            self.change_state("DIFFICULTY")
+            return
+
+        if self.state == "DIFFICULTY":
+            self.change_state("MENU")
+            return
+
+        if self.prev_state:
+            self.change_state(self.prev_state)
+
+    def go_back_from_game(self):
+        # Quay về màn chọn size
+        self.game = None
+        self.game_over = False
+        self.ai_thinking = False
+        self.input_locked = False
         self.change_state("SIZE")
 
     def exit_game(self):
@@ -465,7 +608,7 @@ class GameUI:
     def start_game(self, mode):
         self.mode = mode
         rows, cols = mode
-        self.game = GameState(rows, cols, 'hard')
+        self.game = GameState(rows, cols, self.difficulty)
 
         self.game_over = False
         self.ai_thinking = False
@@ -486,8 +629,7 @@ class GameUI:
         self.board_dynamic_dirty = True
         self.board_dynamic_surface = None
 
-        self.state = "GAME"
-        self.buttons.clear()
+        self.change_state("GAME")
 
     def compute_board_layout(self):
         rows, cols = self.mode
@@ -583,14 +725,14 @@ class GameUI:
     def draw_loading(self):
         self.draw_bg()
         fr = self.frame_loading
-        draw_round_rect(self.screen, fr, (18, 20, 30), 30)
+        draw_round_rect(self.screen, fr, THEME["panel"], 30)
         draw_round_rect_outline(self.screen, fr, (255, 255, 255), 2, 30)
 
         cx = fr.centerx
 
         text1_h = self.font_big.get_height()
         text2_h = self.font_small.get_height()
-        gap = 14
+        gap = 18
 
         if self.loading_frames:
             frame = self.loading_frames[self.loading_frame_index]
@@ -608,36 +750,52 @@ class GameUI:
 
         dots = "." * ((pygame.time.get_ticks() // 300) % 4)
         draw_text_center(self.screen, f"Loading{dots}", self.font_big,
-                         THEME["accent2"], (cx, text1_cy), glow=True, glow_color=THEME["accent"])
-        draw_text_center(self.screen, "Preparing the neon battlefield...", self.font_small,
+                         THEME["accent"], (cx, text1_cy), glow=True, glow_color=THEME["accent2"])
+        draw_text_center(self.screen, "Preparing the battlefield...", self.font_small,
                          THEME["subtext"], (cx, text1_cy + text1_h // 2 + gap + text2_h // 2))
 
     # =========================
-    # MENU / SIZE
+    # MENU / DIFFICULTY / SIZE
     # =========================
     def draw_menu(self):
         self.draw_bg()
         fr = self.frame_menu
-        draw_round_rect(self.screen, fr, (18, 20, 30), 30)
+        draw_round_rect(self.screen, fr, THEME["panel"], 30)
         draw_round_rect_outline(self.screen, fr, (255, 255, 255), 2, 30)
 
         cx = fr.centerx
 
         title_h = self.font_title.get_height()
-        sub_h = self.font_mid.get_height()
-        title_gap = 12
-        block_gap = 28
+        block_gap = 40
 
         btn_top = self.buttons[0].rect.top if self.buttons else fr.centery
         header_bottom = btn_top - block_gap
-        header_h = title_h + title_gap + sub_h
-        title_cy = header_bottom - header_h + title_h // 2
-        sub_cy = title_cy + title_h // 2 + title_gap + sub_h // 2
+        title_cy = header_bottom - title_h // 2
 
         draw_text_center(self.screen, "DOTS & BOXES", self.font_title,
-                         THEME["text"], (cx, title_cy), glow=True, glow_color=THEME["accent"])
-        draw_text_center(self.screen, "NEON EDITION", self.font_mid,
-                         THEME["accent2"], (cx, sub_cy))
+                         THEME["text"], (cx, title_cy), glow=True, glow_color=THEME["accent2"])
+
+        for b in self.buttons:
+            b.draw(self.screen)
+
+    def draw_difficulty_menu(self):
+        self.draw_bg()
+        fr = self.frame_diff
+        draw_round_rect(self.screen, fr, THEME["panel"], 30)
+        draw_round_rect_outline(self.screen, fr, (255, 255, 255), 2, 30)
+
+        cx = fr.centerx
+        title_h = self.font_title.get_height()
+        block_gap = 34
+
+        btn_top = self.buttons[0].rect.top if self.buttons else fr.centery
+        title_cy = btn_top - block_gap - title_h // 2
+
+        draw_text_center(self.screen, "CHOOSE DIFFICULTY", self.font_title,
+                         THEME["text"], (cx, title_cy), glow=True, glow_color=THEME["accent2"])
+
+        draw_text_center(self.screen, f"Current: {self.difficulty.upper()}", self.font_small,
+                         THEME["accent"], (cx, title_cy + 56))
 
         for b in self.buttons:
             b.draw(self.screen)
@@ -645,18 +803,33 @@ class GameUI:
     def draw_size_menu(self):
         self.draw_bg()
         fr = self.frame_size
-        draw_round_rect(self.screen, fr, (18, 20, 30), 30)
+        draw_round_rect(self.screen, fr, THEME["panel"], 30)
         draw_round_rect_outline(self.screen, fr, (255, 255, 255), 2, 30)
 
         cx = fr.centerx
         title_h = self.font_title.get_height()
-        block_gap = 24
+        block_gap = 34
 
         btn_top = self.buttons[0].rect.top if self.buttons else fr.centery
         title_cy = btn_top - block_gap - title_h // 2
 
         draw_text_center(self.screen, "CHOOSE BOARD SIZE", self.font_title,
-                         THEME["text"], (cx, title_cy), glow=True, glow_color=THEME["accent"])
+                         THEME["text"], (cx, title_cy), glow=True, glow_color=THEME["accent2"])
+
+        draw_text_center(self.screen, f"Difficulty: {self.difficulty.upper()}", self.font_small,
+                         THEME["accent"], (cx, title_cy + 54))
+
+        hs_34 = self.get_highscore((3, 4), self.difficulty)
+        hs_45 = self.get_highscore((4, 5), self.difficulty)
+        hs_56 = self.get_highscore((5, 6), self.difficulty)
+
+        if len(self.buttons) >= 3:
+            draw_text_center(self.screen, f"Best: {hs_34}", self.font_tiny, THEME["success"],
+                             (self.buttons[0].rect.centerx, self.buttons[0].rect.bottom + 20))
+            draw_text_center(self.screen, f"Best: {hs_45}", self.font_tiny, THEME["success"],
+                             (self.buttons[1].rect.centerx, self.buttons[1].rect.bottom + 20))
+            draw_text_center(self.screen, f"Best: {hs_56}", self.font_tiny, THEME["success"],
+                             (self.buttons[2].rect.centerx, self.buttons[2].rect.bottom + 20))
 
         for b in self.buttons:
             b.draw(self.screen)
@@ -669,7 +842,7 @@ class GameUI:
         return (ox + c * self.cell, oy + r * self.cell)
 
     def draw_board(self):
-        draw_round_rect(self.screen, self.frame_game, (18, 20, 30), 30)
+        draw_round_rect(self.screen, self.frame_game, THEME["panel"], 30)
         draw_round_rect_outline(self.screen, self.frame_game, (255, 255, 255), 2, 30)
 
         if self.board_static_dirty or self.board_static_surface is None:
@@ -760,32 +933,48 @@ class GameUI:
     # HUD
     # =========================
     def draw_hud(self):
-        panel = pygame.Rect(20, 16, self.width - 40, 88)
-        draw_round_rect(self.screen, panel, (20, 22, 34), 24)
+        # tăng chiều cao HUD để không đè chữ
+        panel = pygame.Rect(20, 14, self.width - 40, 108)
+        draw_round_rect(self.screen, panel, THEME["panel"], 24)
         draw_round_rect_outline(self.screen, panel, (255, 255, 255), 2, 24)
 
         cx = panel.centerx
         left_x = panel.x + panel.w // 4
         right_x = panel.x + panel.w * 3 // 4
-        mid_y = panel.y + panel.h // 2 - 8
-        hint_y = panel.y + panel.h // 2 + 16
+
+        # tách rõ 3 dòng
+        score_y = panel.y + 28
+        turn_y = panel.y + 64
+        hint_y = panel.y + 88
 
         draw_text_center(self.screen, f"PLAYER: {self.game.score['player']}", self.font_mid,
-                         THEME["player"], (left_x, mid_y), glow=True, glow_color=THEME["accent2"])
+                         THEME["player"], (left_x, score_y), glow=True, glow_color=THEME["accent2"])
         draw_text_center(self.screen, f"AI: {self.game.score['AI']}", self.font_mid,
-                         THEME["ai"], (right_x, mid_y), glow=True, glow_color=THEME["ai"])
+                         THEME["ai"], (right_x, score_y), glow=True, glow_color=THEME["ai"])
 
         turn = "PLAYER TURN" if self.current_turn == PLAYER else "AI TURN"
         turn_color = THEME["player"] if self.current_turn == PLAYER else THEME["ai"]
-        draw_text_center(self.screen, turn, self.font_small, turn_color, (cx, hint_y))
+        draw_text_center(self.screen, turn, self.font_small, turn_color, (cx, turn_y))
 
         draw_text_center(
             self.screen,
-            "ESC: Exit  |  Click lines to play",
-            self.font_small,
+            "Click lines to play",
+            self.font_tiny,
             THEME["subtext"],
-            (cx, self.frame_game.bottom + 22)
+            (cx, hint_y)
         )
+
+        hs = self.get_highscore()
+        draw_text_left(
+            self.screen,
+            f"Mode: {self.mode[0]}x{self.mode[1]} | {self.difficulty.upper()} | Best: {hs}",
+            self.font_tiny,
+            THEME["success"],
+            (28, self.frame_game.bottom + 16)
+        )
+
+        if self.back_button_game:
+            self.back_button_game.draw(self.screen)
 
     # =========================
     # GAME DRAW
@@ -800,6 +989,7 @@ class GameUI:
     # GAME OVER
     # =========================
     def finish_game(self):
+        self.update_highscore()
         self.game_over = True
         self.ai_thinking = False
         self.input_locked = True
@@ -809,38 +999,43 @@ class GameUI:
         self.draw_game()
 
         overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 120))
+        overlay.fill((THEME["overlay"][0], THEME["overlay"][1], THEME["overlay"][2], 70))
         self.screen.blit(overlay, (0, 0))
 
         fr = self.frame_gameover
-        draw_round_rect(self.screen, fr, (18, 20, 30), 30)
+        draw_round_rect(self.screen, fr, THEME["panel"], 30)
         draw_round_rect_outline(self.screen, fr, (255, 255, 255), 2, 30)
 
         cx = fr.centerx
 
         result_h = self.font_title.get_height()
         score_h = self.font_big.get_height()
-        gap = 14
-        block_gap = 24
+        small_h = self.font_small.get_height()
+        gap = 18
+        block_gap = 26
 
         btn_top = self.buttons[0].rect.top if self.buttons else fr.centery
         text_bottom = btn_top - block_gap
-        total_text_h = result_h + gap + score_h
+        total_text_h = result_h + gap + score_h + gap + small_h
         result_cy = text_bottom - total_text_h + result_h // 2
         score_cy = result_cy + result_h // 2 + gap + score_h // 2
+        best_cy = score_cy + score_h // 2 + gap + small_h // 2
 
         if self.game.score['player'] > self.game.score['AI']:
             result, color = "YOU WIN!", THEME["success"]
         elif self.game.score['player'] < self.game.score['AI']:
             result, color = "YOU LOSE!", THEME["danger"]
         else:
-            result, color = "DRAW!", THEME["accent2"]
+            result, color = "DRAW!", THEME["accent"]
 
         draw_text_center(self.screen, result, self.font_title, color,
-                         (cx, result_cy), glow=True, glow_color=THEME["accent"])
+                         (cx, result_cy), glow=True, glow_color=THEME["accent2"])
         draw_text_center(self.screen,
                          f"PLAYER {self.game.score['player']}  -  {self.game.score['AI']} AI",
                          self.font_big, THEME["text"], (cx, score_cy))
+        draw_text_center(self.screen,
+                         f"BEST ({self.mode[0]}x{self.mode[1]} - {self.difficulty.upper()}): {self.get_highscore()}",
+                         self.font_small, THEME["success"], (cx, best_cy))
 
         for b in self.buttons:
             b.draw(self.screen)
@@ -875,7 +1070,6 @@ class GameUI:
         return None
 
     def handle_game_click(self, pos):
-        # FIX 2: khóa input cực chặt
         if self.state != "GAME":
             return
         if self.game_over:
@@ -900,7 +1094,6 @@ class GameUI:
             if self.game.verti[i][j] != 0:
                 return
 
-        # khóa ngay khi player vừa click hợp lệ
         self.input_locked = True
 
         if move_type == "h":
@@ -929,7 +1122,6 @@ class GameUI:
             self.ai_thinking = True
             pygame.time.set_timer(pygame.USEREVENT + 1, 350, loops=1)
         else:
-            # player được đi tiếp nếu ăn ô
             self.current_turn = PLAYER
             self.ai_thinking = False
             self.input_locked = False
@@ -986,7 +1178,11 @@ class GameUI:
         mouse_pos = pygame.mouse.get_pos()
         for b in self.buttons:
             b.update(mouse_pos)
+        if self.back_button_game:
+            self.back_button_game.update(mouse_pos)
+
         self.update_click_effects()
+
         if self.state == "LOADING":
             self.update_loading(dt)
 
@@ -998,6 +1194,8 @@ class GameUI:
             self.draw_loading()
         elif self.state == "MENU":
             self.draw_menu()
+        elif self.state == "DIFFICULTY":
+            self.draw_difficulty_menu()
         elif self.state == "SIZE":
             self.draw_size_menu()
         elif self.state == "GAME":
@@ -1018,7 +1216,12 @@ class GameUI:
                     self.running = False
 
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    self.running = False
+                    if self.state == "GAME":
+                        self.go_back_from_game()
+                    elif self.state in ["SIZE", "DIFFICULTY", "GAMEOVER"]:
+                        self.go_back()
+                    else:
+                        self.running = False
 
                 elif event.type == pygame.USEREVENT + 1:
                     self.ai_play()
@@ -1027,12 +1230,16 @@ class GameUI:
                     self.add_click_effect(event.pos)
 
                 button_clicked = False
+
                 for b in self.buttons:
                     if b.handle_event(event):
                         button_clicked = True
                         break
 
-                # FIX 3: chỉ cho click game khi tới lượt player + không lock
+                if not button_clicked and self.back_button_game:
+                    if self.back_button_game.handle_event(event):
+                        button_clicked = True
+
                 if (
                     self.state == "GAME"
                     and event.type == pygame.MOUSEBUTTONDOWN
