@@ -408,11 +408,11 @@ class GameUI:
         )
 
         self.frame_size = pygame.Rect(
-            W // 2 - min(740, W - pad_x) // 2,
-            H // 2 - min(680, H - pad_y) // 2,
-            min(740, W - pad_x),
-            min(680, H - pad_y)
-        )
+            W // 2 - min(760, W - pad_x) // 2,
+            H // 2 - min(760, H - pad_y) // 2,
+            min(760, W - pad_x),
+            min(760, H - pad_y)
+)
 
         self.frame_names = pygame.Rect(
             W // 2 - min(760, W - pad_x) // 2,
@@ -656,19 +656,31 @@ class GameUI:
             ]
 
         elif new_state == "SIZE":
-            bw = min(350, self.frame_size.w // 2)
-            bh = 60
-            gap = 22
-            rects = stack_center_rects(
-                self.frame_size,
-                [(bw, bh), (bw, bh), (bw, bh), (160, 52)],
-                gap=gap, offset_y=86
-            )
+            bw = min(440, self.frame_size.w - 160)
+            bh = 70
+
+            # tăng khoảng cách mạnh để dòng "Best" không bị đè
+            gap = 46
+
+            # tự canh tay để nút nằm đẹp hơn trong frame
+            cx = self.frame_size.centerx
+            start_y = self.frame_size.y + 150
+
+            rect_1 = pygame.Rect(cx - bw // 2, start_y, bw, bh)
+            rect_2 = pygame.Rect(cx - bw // 2, start_y + bh + gap, bw, bh)
+            rect_3 = pygame.Rect(cx - bw // 2, start_y + (bh + gap) * 2, bw, bh)
+
+            # back để thấp hẳn xuống dưới
+            back_w = 190
+            back_h = 56
+            back_y = rect_3.bottom + 60
+            rect_back = pygame.Rect(cx - back_w // 2, back_y, back_w, back_h)
+
             self.buttons = [
-                Button(rects[0], "3 x 4", lambda: self.start_game((3, 4)), font=self.font_mid),
-                Button(rects[1], "4 x 5", lambda: self.start_game((4, 5)), font=self.font_mid),
-                Button(rects[2], "5 x 6", lambda: self.start_game((5, 6)), font=self.font_mid),
-                Button(rects[3], "BACK", self.go_back, font=self.font_small),
+                Button(rect_1, "3 x 4", lambda: self.start_game((3, 4)), font=self.font_mid),
+                Button(rect_2, "4 x 5", lambda: self.start_game((4, 5)), font=self.font_mid),
+                Button(rect_3, "5 x 6", lambda: self.start_game((5, 6)), font=self.font_mid),
+                Button(rect_back, "BACK", self.go_back, font=self.font_small),
             ]
 
         elif new_state == "GAME":
@@ -1015,12 +1027,19 @@ class GameUI:
             hs_56 = self.get_highscore((5, 6), self.difficulty)
 
             if len(self.buttons) >= 3:
-                draw_text_center(self.screen, f"Best: {hs_34}", self.font_tiny, THEME["success"],
-                                 (self.buttons[0].rect.centerx, self.buttons[0].rect.bottom + 20))
-                draw_text_center(self.screen, f"Best: {hs_45}", self.font_tiny, THEME["success"],
-                                 (self.buttons[1].rect.centerx, self.buttons[1].rect.bottom + 20))
-                draw_text_center(self.screen, f"Best: {hs_56}", self.font_tiny, THEME["success"],
-                                 (self.buttons[2].rect.centerx, self.buttons[2].rect.bottom + 20))
+                best_offset = 24
+                draw_text_center(
+                    self.screen, f"Best: {hs_34}", self.font_tiny, THEME["success"],
+                    (self.buttons[0].rect.centerx, self.buttons[0].rect.bottom + best_offset)
+                )
+                draw_text_center(
+                    self.screen, f"Best: {hs_45}", self.font_tiny, THEME["success"],
+                    (self.buttons[1].rect.centerx, self.buttons[1].rect.bottom + best_offset)
+                )
+                draw_text_center(
+                    self.screen, f"Best: {hs_56}", self.font_tiny, THEME["success"],
+                    (self.buttons[2].rect.centerx, self.buttons[2].rect.bottom + best_offset)
+                )
 
         for b in self.buttons:
             b.draw(self.screen)
