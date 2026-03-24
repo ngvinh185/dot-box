@@ -13,27 +13,32 @@ FPS = 60
 
 PLAYER = 0
 AI = 1
+PLAYER2 = 2
 
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 820
 
 # ===== THEME SÁNG HƠN + DỊU HƠN =====
 THEME = {
-    "bg": (238, 244, 255),          # nền tổng thể sáng xanh nhạt
-    "grid": (214, 224, 244),        # lưới nền sáng
-    "panel": (248, 251, 255),       # panel trắng xanh rất nhạt
-    "panel2": (226, 236, 255),      # button / panel phụ
-    "text": (38, 48, 74),           # chữ chính đậm dễ đọc
-    "subtext": (100, 114, 145),     # chữ phụ
-    "player": (255, 120, 170),      # hồng sáng
-    "ai": (95, 180, 255),           # xanh sáng
-    "accent": (125, 145, 255),      # xanh tím dịu
-    "accent2": (255, 182, 220),     # glow hồng nhạt
-    "success": (88, 198, 145),      # xanh lá dịu
-    "danger": (255, 112, 130),      # đỏ dịu
-    "shadow": (180, 194, 224),      # bóng sáng mềm
-    "board_line": (176, 194, 230),  # line chưa đánh trên board
-    "overlay": (90, 110, 160),      # overlay sáng nhẹ
+    "bg": (238, 244, 255),
+    "grid": (214, 224, 244),
+    "panel": (248, 251, 255),
+    "panel2": (226, 236, 255),
+    "text": (38, 48, 74),
+    "subtext": (100, 114, 145),
+    "player": (255, 120, 170),
+    "ai": (95, 180, 255),
+    "p2": (120, 200, 150),
+    "accent": (125, 145, 255),
+    "accent2": (255, 182, 220),
+    "success": (88, 198, 145),
+    "danger": (255, 112, 130),
+    "shadow": (180, 194, 224),
+    "board_line": (176, 194, 230),
+    "overlay": (90, 110, 160),
+    "input_bg": (255, 255, 255),
+    "input_border": (180, 194, 224),
+    "input_active": (125, 145, 255),
 }
 
 MAX_RIPPLES = 6
@@ -153,6 +158,61 @@ class Button:
         return False
 
 # =========================
+# TEXT INPUT
+# =========================
+class TextInput:
+    def __init__(self, rect, text="", placeholder="", font=None, max_len=14):
+        self.rect = pygame.Rect(rect)
+        self.text = text
+        self.placeholder = placeholder
+        self.font = font
+        self.max_len = max_len
+        self.active = False
+        self.cursor_timer = 0
+        self.show_cursor = True
+
+    def update(self, dt):
+        self.cursor_timer += dt
+        if self.cursor_timer >= 500:
+            self.cursor_timer = 0
+            self.show_cursor = not self.show_cursor
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self.active = self.rect.collidepoint(event.pos)
+
+        if self.active and event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_BACKSPACE:
+                self.text = self.text[:-1]
+            elif event.key == pygame.K_RETURN:
+                return "submit"
+            else:
+                if len(self.text) < self.max_len:
+                    ch = event.unicode
+                    if ch.isprintable() and ch not in "\r\n\t":
+                        self.text += ch
+        return None
+
+    def draw(self, surface):
+        border = THEME["input_active"] if self.active else THEME["input_border"]
+        draw_round_rect(surface, self.rect, THEME["input_bg"], 18)
+        draw_round_rect_outline(surface, self.rect, border, 3 if self.active else 2, 18)
+
+        display = self.text if self.text else self.placeholder
+        color = THEME["text"] if self.text else THEME["subtext"]
+
+        txt = get_text_surface(self.font, display, color)
+        text_x = self.rect.x + 16
+        text_y = self.rect.centery - txt.get_height() // 2
+        surface.blit(txt, (text_x, text_y))
+
+        if self.active and self.show_cursor:
+            cursor_x = text_x + txt.get_width() + (0 if self.text else 0)
+            cursor_y1 = self.rect.y + 12
+            cursor_y2 = self.rect.bottom - 12
+            pygame.draw.line(surface, THEME["accent"], (cursor_x, cursor_y1), (cursor_x, cursor_y2), 2)
+
+# =========================
 # UI
 # =========================
 class GameUI:
@@ -185,6 +245,17 @@ class GameUI:
         self.game_over = False
         self.ai_thinking = False
         self.current_turn = PLAYER
+
+        # NEW: game mode
+        self.play_mode = "AI"  # "AI" or "PVP"
+
+        # Player names
+        self.player1_name = "PLAYER 1"
+        self.player2_name = "PLAYER 2"
+
+        # Input
+        self.name_input_1 = None
+        self.name_input_2 = None
 
         # CHỐNG CLICK BẨN / double click / click lúc AI turn
         self.input_locked = False
@@ -235,6 +306,7 @@ class GameUI:
         self.frame_size = None
         self.frame_game = None
         self.frame_gameover = None
+        self.frame_names = None
 
         # In-game back button
         self.back_button_game = None
@@ -277,6 +349,8 @@ class GameUI:
             pass
 
     def get_score_key(self, mode=None, difficulty=None):
+        if self.play_mode != "AI":
+            return None
         if mode is None:
             mode = self.mode
         if difficulty is None:
@@ -293,6 +367,8 @@ class GameUI:
         return int(self.highscores.get(key, 0))
 
     def update_highscore(self):
+        if self.play_mode != "AI":
+            return
         if not self.mode or not self.game:
             return
         key = self.get_score_key()
@@ -318,10 +394,10 @@ class GameUI:
         )
 
         self.frame_menu = pygame.Rect(
-            W // 2 - min(740, W - pad_x) // 2,
-            H // 2 - min(540, H - pad_y) // 2,
-            min(740, W - pad_x),
-            min(540, H - pad_y)
+            W // 2 - min(760, W - pad_x) // 2,
+            H // 2 - min(620, H - pad_y) // 2,
+            min(760, W - pad_x),
+            min(620, H - pad_y)
         )
 
         self.frame_diff = pygame.Rect(
@@ -336,6 +412,13 @@ class GameUI:
             H // 2 - min(680, H - pad_y) // 2,
             min(740, W - pad_x),
             min(680, H - pad_y)
+        )
+
+        self.frame_names = pygame.Rect(
+            W // 2 - min(760, W - pad_x) // 2,
+            H // 2 - min(640, H - pad_y) // 2,
+            min(760, W - pad_x),
+            min(640, H - pad_y)
         )
 
         game_w = min(1080, W - 120)
@@ -426,7 +509,14 @@ class GameUI:
                 if owner != -1:
                     x, y = self.get_dot_pos(r, c)
                     rect = pygame.Rect(x - panel.x + 9, y - panel.y + 9, self.cell - 18, self.cell - 18)
-                    color = THEME["player"] if owner == PLAYER else THEME["ai"]
+
+                    if owner == PLAYER:
+                        color = THEME["player"]
+                    elif owner == AI:
+                        color = THEME["ai"]
+                    else:
+                        color = THEME["p2"]
+
                     pygame.draw.rect(surf, color, rect, border_radius=16)
 
         for r in range(rows + 1):
@@ -435,7 +525,14 @@ class GameUI:
                 if owner != -1:
                     p1 = self.get_dot_pos(r, c)
                     p2 = self.get_dot_pos(r, c + 1)
-                    color = THEME["player"] if owner == PLAYER else THEME["ai"]
+
+                    if owner == PLAYER:
+                        color = THEME["player"]
+                    elif owner == AI:
+                        color = THEME["ai"]
+                    else:
+                        color = THEME["p2"]
+
                     pygame.draw.line(
                         surf, color,
                         (p1[0] - panel.x, p1[1] - panel.y),
@@ -448,7 +545,14 @@ class GameUI:
                 if owner != -1:
                     p1 = self.get_dot_pos(r, c)
                     p2 = self.get_dot_pos(r + 1, c)
-                    color = THEME["player"] if owner == PLAYER else THEME["ai"]
+
+                    if owner == PLAYER:
+                        color = THEME["player"]
+                    elif owner == AI:
+                        color = THEME["ai"]
+                    else:
+                        color = THEME["p2"]
+
                     pygame.draw.line(
                         surf, color,
                         (p1[0] - panel.x, p1[1] - panel.y),
@@ -495,13 +599,14 @@ class GameUI:
             return
 
         if new_state == "MENU":
-            bw = min(320, self.frame_menu.w // 2)
-            bh = 68
-            gap = 26
-            rects = stack_center_rects(self.frame_menu, [(bw, bh), (bw, bh)], gap=gap, offset_y=88)
+            bw = min(360, self.frame_menu.w // 2)
+            bh = 66
+            gap = 22
+            rects = stack_center_rects(self.frame_menu, [(bw, bh), (bw, bh), (bw, bh)], gap=gap, offset_y=100)
             self.buttons = [
-                Button(rects[0], "PLAY VS AI", self.goto_difficulty, font=self.font_mid),
-                Button(rects[1], "EXIT", self.exit_game,
+                Button(rects[0], "PLAYER VS AI", self.goto_difficulty, font=self.font_mid),
+                Button(rects[1], "PLAYER VS PLAYER", self.goto_names, font=self.font_mid),
+                Button(rects[2], "EXIT", self.exit_game,
                        base_color=(255, 226, 232), hover_color=THEME["danger"], font=self.font_mid),
             ]
 
@@ -519,6 +624,35 @@ class GameUI:
                 Button(rects[1], "MEDIUM", lambda: self.set_difficulty_and_goto_size("medium"), font=self.font_mid),
                 Button(rects[2], "HARD", lambda: self.set_difficulty_and_goto_size("hard"), font=self.font_mid),
                 Button(rects[3], "BACK", self.go_back, font=self.font_small),
+            ]
+
+        elif new_state == "NAMES":
+            self.play_mode = "PVP"
+
+            input_w = 360
+            input_h = 58
+            cx = self.frame_names.centerx
+
+            self.name_input_1 = TextInput(
+                pygame.Rect(cx - input_w // 2, self.frame_names.y + 220, input_w, input_h),
+                text=self.player1_name if self.player1_name != "PLAYER 1" else "",
+                placeholder="Enter Player 1 name",
+                font=self.font_small,
+                max_len=14
+            )
+            self.name_input_2 = TextInput(
+                pygame.Rect(cx - input_w // 2, self.frame_names.y + 320, input_w, input_h),
+                text=self.player2_name if self.player2_name != "PLAYER 2" else "",
+                placeholder="Enter Player 2 name",
+                font=self.font_small,
+                max_len=14
+            )
+
+            self.buttons = [
+                Button(pygame.Rect(cx - 175, self.frame_names.bottom - 130, 350, 58),
+                       "CONTINUE", self.goto_size_from_names, font=self.font_mid),
+                Button(pygame.Rect(cx - 80, self.frame_names.bottom - 58, 160, 48),
+                       "BACK", self.go_back, font=self.font_small),
             ]
 
         elif new_state == "SIZE":
@@ -562,9 +696,22 @@ class GameUI:
         self.change_state("MENU")
 
     def goto_difficulty(self):
+        self.play_mode = "AI"
         self.change_state("DIFFICULTY")
 
+    def goto_names(self):
+        self.change_state("NAMES")
+
     def goto_size(self):
+        self.change_state("SIZE")
+
+    def goto_size_from_names(self):
+        n1 = self.name_input_1.text.strip() if self.name_input_1 else ""
+        n2 = self.name_input_2.text.strip() if self.name_input_2 else ""
+
+        self.player1_name = n1 if n1 else "PLAYER 1"
+        self.player2_name = n2 if n2 else "PLAYER 2"
+
         self.change_state("SIZE")
 
     def set_difficulty_and_goto_size(self, diff):
@@ -581,7 +728,14 @@ class GameUI:
             return
 
         if self.state == "SIZE":
-            self.change_state("DIFFICULTY")
+            if self.play_mode == "PVP":
+                self.change_state("NAMES")
+            else:
+                self.change_state("DIFFICULTY")
+            return
+
+        if self.state == "NAMES":
+            self.change_state("MENU")
             return
 
         if self.state == "DIFFICULTY":
@@ -592,12 +746,15 @@ class GameUI:
             self.change_state(self.prev_state)
 
     def go_back_from_game(self):
-        # Quay về màn chọn size
         self.game = None
         self.game_over = False
         self.ai_thinking = False
         self.input_locked = False
-        self.change_state("SIZE")
+
+        if self.play_mode == "PVP":
+            self.change_state("NAMES")
+        else:
+            self.change_state("SIZE")
 
     def exit_game(self):
         self.running = False
@@ -609,6 +766,10 @@ class GameUI:
         self.mode = mode
         rows, cols = mode
         self.game = GameState(rows, cols, self.difficulty)
+
+        # reset score cho chắc
+        self.game.score['player'] = 0
+        self.game.score['AI'] = 0
 
         self.game_over = False
         self.ai_thinking = False
@@ -755,7 +916,7 @@ class GameUI:
                          THEME["subtext"], (cx, text1_cy + text1_h // 2 + gap + text2_h // 2))
 
     # =========================
-    # MENU / DIFFICULTY / SIZE
+    # MENU / DIFFICULTY / SIZE / NAMES
     # =========================
     def draw_menu(self):
         self.draw_bg()
@@ -766,7 +927,7 @@ class GameUI:
         cx = fr.centerx
 
         title_h = self.font_title.get_height()
-        block_gap = 40
+        block_gap = 42
 
         btn_top = self.buttons[0].rect.top if self.buttons else fr.centery
         header_bottom = btn_top - block_gap
@@ -774,6 +935,9 @@ class GameUI:
 
         draw_text_center(self.screen, "DOTS & BOXES", self.font_title,
                          THEME["text"], (cx, title_cy), glow=True, glow_color=THEME["accent2"])
+
+        draw_text_center(self.screen, "Choose game mode", self.font_small,
+                         THEME["subtext"], (cx, title_cy + 58))
 
         for b in self.buttons:
             b.draw(self.screen)
@@ -800,6 +964,28 @@ class GameUI:
         for b in self.buttons:
             b.draw(self.screen)
 
+    def draw_names_menu(self):
+        self.draw_bg()
+        fr = self.frame_names
+        draw_round_rect(self.screen, fr, THEME["panel"], 30)
+        draw_round_rect_outline(self.screen, fr, (255, 255, 255), 2, 30)
+
+        cx = fr.centerx
+
+        draw_text_center(self.screen, "ENTER PLAYER NAMES", self.font_title,
+                         THEME["text"], (cx, fr.y + 90), glow=True, glow_color=THEME["accent2"])
+
+        draw_text_center(self.screen, "Player 1", self.font_small, THEME["player"], (cx, fr.y + 195))
+        draw_text_center(self.screen, "Player 2", self.font_small, THEME["p2"], (cx, fr.y + 295))
+
+        if self.name_input_1:
+            self.name_input_1.draw(self.screen)
+        if self.name_input_2:
+            self.name_input_2.draw(self.screen)
+
+        for b in self.buttons:
+            b.draw(self.screen)
+
     def draw_size_menu(self):
         self.draw_bg()
         fr = self.frame_size
@@ -816,20 +1002,25 @@ class GameUI:
         draw_text_center(self.screen, "CHOOSE BOARD SIZE", self.font_title,
                          THEME["text"], (cx, title_cy), glow=True, glow_color=THEME["accent2"])
 
-        draw_text_center(self.screen, f"Difficulty: {self.difficulty.upper()}", self.font_small,
-                         THEME["accent"], (cx, title_cy + 54))
+        if self.play_mode == "AI":
+            draw_text_center(self.screen, f"Difficulty: {self.difficulty.upper()}", self.font_small,
+                             THEME["accent"], (cx, title_cy + 54))
+        else:
+            draw_text_center(self.screen, f"{self.player1_name} vs {self.player2_name}", self.font_small,
+                             THEME["accent"], (cx, title_cy + 54))
 
-        hs_34 = self.get_highscore((3, 4), self.difficulty)
-        hs_45 = self.get_highscore((4, 5), self.difficulty)
-        hs_56 = self.get_highscore((5, 6), self.difficulty)
+        if self.play_mode == "AI":
+            hs_34 = self.get_highscore((3, 4), self.difficulty)
+            hs_45 = self.get_highscore((4, 5), self.difficulty)
+            hs_56 = self.get_highscore((5, 6), self.difficulty)
 
-        if len(self.buttons) >= 3:
-            draw_text_center(self.screen, f"Best: {hs_34}", self.font_tiny, THEME["success"],
-                             (self.buttons[0].rect.centerx, self.buttons[0].rect.bottom + 20))
-            draw_text_center(self.screen, f"Best: {hs_45}", self.font_tiny, THEME["success"],
-                             (self.buttons[1].rect.centerx, self.buttons[1].rect.bottom + 20))
-            draw_text_center(self.screen, f"Best: {hs_56}", self.font_tiny, THEME["success"],
-                             (self.buttons[2].rect.centerx, self.buttons[2].rect.bottom + 20))
+            if len(self.buttons) >= 3:
+                draw_text_center(self.screen, f"Best: {hs_34}", self.font_tiny, THEME["success"],
+                                 (self.buttons[0].rect.centerx, self.buttons[0].rect.bottom + 20))
+                draw_text_center(self.screen, f"Best: {hs_45}", self.font_tiny, THEME["success"],
+                                 (self.buttons[1].rect.centerx, self.buttons[1].rect.bottom + 20))
+                draw_text_center(self.screen, f"Best: {hs_56}", self.font_tiny, THEME["success"],
+                                 (self.buttons[2].rect.centerx, self.buttons[2].rect.bottom + 20))
 
         for b in self.buttons:
             b.draw(self.screen)
@@ -864,16 +1055,25 @@ class GameUI:
             edge["progress"] += 0.20
             t = clamp(edge["progress"], 0.0, 1.0)
             t2 = ease_out_quad(t)
-            color = THEME["player"] if edge["owner"] == PLAYER else THEME["ai"]
+
+            if edge["owner"] == PLAYER:
+                color = THEME["player"]
+            elif edge["owner"] == AI:
+                color = THEME["ai"]
+            else:
+                color = THEME["p2"]
+
             if edge["type"] == "h":
                 p1 = self.get_dot_pos(edge["i"], edge["j"])
                 p2 = self.get_dot_pos(edge["i"], edge["j"] + 1)
             else:
                 p1 = self.get_dot_pos(edge["i"], edge["j"])
                 p2 = self.get_dot_pos(edge["i"] + 1, edge["j"])
+
             x = int(lerp(p1[0], p2[0], t2))
             y = int(lerp(p1[1], p2[1], t2))
             pygame.draw.line(self.screen, color, p1, (x, y), 7)
+
             if edge["progress"] < 1.0:
                 keep.append(edge)
         self.animating_edges = keep
@@ -886,8 +1086,16 @@ class GameUI:
             x, y = self.get_dot_pos(box["r"], box["c"])
             pad = int(14 - 5 * t)
             rect = pygame.Rect(x + pad, y + pad, self.cell - pad * 2, self.cell - pad * 2)
-            color = THEME["player"] if box["owner"] == PLAYER else THEME["ai"]
+
+            if box["owner"] == PLAYER:
+                color = THEME["player"]
+            elif box["owner"] == AI:
+                color = THEME["ai"]
+            else:
+                color = THEME["p2"]
+
             pygame.draw.rect(self.screen, color, rect, border_radius=16)
+
             if box["progress"] < 1.0:
                 keep.append(box)
         self.animating_boxes = keep
@@ -907,9 +1115,21 @@ class GameUI:
             cnt += 1
         return cnt
 
+    def add_score(self, owner, gained):
+        if gained <= 0:
+            return
+
+        if owner == PLAYER:
+            self.game.score['player'] += gained
+        elif owner == AI:
+            self.game.score['AI'] += gained
+        elif owner == PLAYER2:
+            self.game.score['AI'] += gained  # tái dùng cột AI làm điểm player2 trong PvP
+
     def check_new_boxes_and_score(self, owner):
         rows, cols = self.mode
         gained = 0
+
         for r in range(rows):
             for c in range(cols):
                 if self.box_owner[r][c] == -1 and self.count_edges_box(r, c) == 4:
@@ -917,11 +1137,7 @@ class GameUI:
                     self.animating_boxes.append({"r": r, "c": c, "owner": owner, "progress": 0.0})
                     gained += 1
 
-        if gained > 0:
-            if owner == PLAYER:
-                self.game.score['player'] += gained
-            else:
-                self.game.score['AI'] += gained
+        self.add_score(owner, gained)
 
         self.board_dynamic_dirty = True
         return gained
@@ -933,7 +1149,6 @@ class GameUI:
     # HUD
     # =========================
     def draw_hud(self):
-        # tăng chiều cao HUD để không đè chữ
         panel = pygame.Rect(20, 14, self.width - 40, 108)
         draw_round_rect(self.screen, panel, THEME["panel"], 24)
         draw_round_rect_outline(self.screen, panel, (255, 255, 255), 2, 24)
@@ -942,36 +1157,51 @@ class GameUI:
         left_x = panel.x + panel.w // 4
         right_x = panel.x + panel.w * 3 // 4
 
-        # tách rõ 3 dòng
         score_y = panel.y + 28
         turn_y = panel.y + 64
         hint_y = panel.y + 88
 
-        draw_text_center(self.screen, f"PLAYER: {self.game.score['player']}", self.font_mid,
+        if self.play_mode == "AI":
+            left_name = self.player1_name
+            right_name = "AI"
+            right_color = THEME["ai"]
+        else:
+            left_name = self.player1_name
+            right_name = self.player2_name
+            right_color = THEME["p2"]
+
+        draw_text_center(self.screen, f"{left_name}: {self.game.score['player']}", self.font_mid,
                          THEME["player"], (left_x, score_y), glow=True, glow_color=THEME["accent2"])
-        draw_text_center(self.screen, f"AI: {self.game.score['AI']}", self.font_mid,
-                         THEME["ai"], (right_x, score_y), glow=True, glow_color=THEME["ai"])
+        draw_text_center(self.screen, f"{right_name}: {self.game.score['AI']}", self.font_mid,
+                         right_color, (right_x, score_y), glow=True, glow_color=right_color)
 
-        turn = "PLAYER TURN" if self.current_turn == PLAYER else "AI TURN"
-        turn_color = THEME["player"] if self.current_turn == PLAYER else THEME["ai"]
+        if self.play_mode == "AI":
+            turn = f"{self.player1_name} TURN" if self.current_turn == PLAYER else "AI TURN"
+            turn_color = THEME["player"] if self.current_turn == PLAYER else THEME["ai"]
+        else:
+            turn = f"{self.player1_name} TURN" if self.current_turn == PLAYER else f"{self.player2_name} TURN"
+            turn_color = THEME["player"] if self.current_turn == PLAYER else THEME["p2"]
+
         draw_text_center(self.screen, turn, self.font_small, turn_color, (cx, turn_y))
+        draw_text_center(self.screen, "Click lines to play", self.font_tiny, THEME["subtext"], (cx, hint_y))
 
-        draw_text_center(
-            self.screen,
-            "Click lines to play",
-            self.font_tiny,
-            THEME["subtext"],
-            (cx, hint_y)
-        )
-
-        hs = self.get_highscore()
-        draw_text_left(
-            self.screen,
-            f"Mode: {self.mode[0]}x{self.mode[1]} | {self.difficulty.upper()} | Best: {hs}",
-            self.font_tiny,
-            THEME["success"],
-            (28, self.frame_game.bottom + 16)
-        )
+        if self.play_mode == "AI":
+            hs = self.get_highscore()
+            draw_text_left(
+                self.screen,
+                f"Mode: {self.mode[0]}x{self.mode[1]} | {self.difficulty.upper()} | Best: {hs}",
+                self.font_tiny,
+                THEME["success"],
+                (28, self.frame_game.bottom + 16)
+            )
+        else:
+            draw_text_left(
+                self.screen,
+                f"Mode: {self.mode[0]}x{self.mode[1]} | PvP",
+                self.font_tiny,
+                THEME["success"],
+                (28, self.frame_game.bottom + 16)
+            )
 
         if self.back_button_game:
             self.back_button_game.draw(self.screen)
@@ -1021,21 +1251,41 @@ class GameUI:
         score_cy = result_cy + result_h // 2 + gap + score_h // 2
         best_cy = score_cy + score_h // 2 + gap + small_h // 2
 
-        if self.game.score['player'] > self.game.score['AI']:
-            result, color = "YOU WIN!", THEME["success"]
-        elif self.game.score['player'] < self.game.score['AI']:
-            result, color = "YOU LOSE!", THEME["danger"]
-        else:
-            result, color = "DRAW!", THEME["accent"]
+        left_score = self.game.score['player']
+        right_score = self.game.score['AI']
 
-        draw_text_center(self.screen, result, self.font_title, color,
-                         (cx, result_cy), glow=True, glow_color=THEME["accent2"])
-        draw_text_center(self.screen,
-                         f"PLAYER {self.game.score['player']}  -  {self.game.score['AI']} AI",
-                         self.font_big, THEME["text"], (cx, score_cy))
-        draw_text_center(self.screen,
-                         f"BEST ({self.mode[0]}x{self.mode[1]} - {self.difficulty.upper()}): {self.get_highscore()}",
-                         self.font_small, THEME["success"], (cx, best_cy))
+        if self.play_mode == "AI":
+            if left_score > right_score:
+                result, color = "YOU WIN!", THEME["success"]
+            elif left_score < right_score:
+                result, color = "YOU LOSE!", THEME["danger"]
+            else:
+                result, color = "DRAW!", THEME["accent"]
+
+            draw_text_center(self.screen, result, self.font_title, color,
+                             (cx, result_cy), glow=True, glow_color=THEME["accent2"])
+            draw_text_center(self.screen,
+                             f"{self.player1_name} {left_score}  -  {right_score} AI",
+                             self.font_big, THEME["text"], (cx, score_cy))
+            draw_text_center(self.screen,
+                             f"BEST ({self.mode[0]}x{self.mode[1]} - {self.difficulty.upper()}): {self.get_highscore()}",
+                             self.font_small, THEME["success"], (cx, best_cy))
+        else:
+            if left_score > right_score:
+                result, color = f"{self.player1_name} WINS!", THEME["player"]
+            elif left_score < right_score:
+                result, color = f"{self.player2_name} WINS!", THEME["p2"]
+            else:
+                result, color = "DRAW!", THEME["accent"]
+
+            draw_text_center(self.screen, result, self.font_title, color,
+                             (cx, result_cy), glow=True, glow_color=THEME["accent2"])
+            draw_text_center(self.screen,
+                             f"{self.player1_name} {left_score}  -  {right_score} {self.player2_name}",
+                             self.font_big, THEME["text"], (cx, score_cy))
+            draw_text_center(self.screen,
+                             f"PVP MODE ({self.mode[0]}x{self.mode[1]})",
+                             self.font_small, THEME["success"], (cx, best_cy))
 
         for b in self.buttons:
             b.draw(self.screen)
@@ -1078,7 +1328,8 @@ class GameUI:
             return
         if self.ai_thinking:
             return
-        if self.current_turn != PLAYER:
+
+        if self.play_mode == "AI" and self.current_turn != PLAYER:
             return
 
         edge = self.get_edge_at_pos(pos)
@@ -1096,33 +1347,41 @@ class GameUI:
 
         self.input_locked = True
 
+        owner = self.current_turn
+
         if move_type == "h":
             self.game.horizon[i][j] = 1
-            self.h_owner[i][j] = PLAYER
+            self.h_owner[i][j] = owner
         else:
             self.game.verti[i][j] = 1
-            self.v_owner[i][j] = PLAYER
+            self.v_owner[i][j] = owner
 
         self.game.edges_deactive -= 1
 
         self.animating_edges.append({
             "type": move_type, "i": i, "j": j,
-            "progress": 0.0, "owner": PLAYER
+            "progress": 0.0, "owner": owner
         })
 
         self.board_dynamic_dirty = True
-        gained = self.check_new_boxes_and_score(PLAYER)
+        gained = self.check_new_boxes_and_score(owner)
 
         if self.is_game_over():
             self.finish_game()
             return
 
-        if gained == 0:
-            self.current_turn = AI
-            self.ai_thinking = True
-            pygame.time.set_timer(pygame.USEREVENT + 1, 350, loops=1)
+        if self.play_mode == "AI":
+            if gained == 0:
+                self.current_turn = AI
+                self.ai_thinking = True
+                pygame.time.set_timer(pygame.USEREVENT + 1, 350, loops=1)
+            else:
+                self.current_turn = PLAYER
+                self.ai_thinking = False
+                self.input_locked = False
         else:
-            self.current_turn = PLAYER
+            if gained == 0:
+                self.current_turn = PLAYER2 if self.current_turn == PLAYER else PLAYER
             self.ai_thinking = False
             self.input_locked = False
 
@@ -1130,6 +1389,11 @@ class GameUI:
     # AI
     # =========================
     def ai_play(self):
+        if self.play_mode != "AI":
+            self.ai_thinking = False
+            self.input_locked = False
+            return
+
         if self.state != "GAME" or self.game_over or self.current_turn != AI:
             self.ai_thinking = False
             self.input_locked = False
@@ -1181,6 +1445,11 @@ class GameUI:
         if self.back_button_game:
             self.back_button_game.update(mouse_pos)
 
+        if self.name_input_1:
+            self.name_input_1.update(dt)
+        if self.name_input_2:
+            self.name_input_2.update(dt)
+
         self.update_click_effects()
 
         if self.state == "LOADING":
@@ -1196,6 +1465,8 @@ class GameUI:
             self.draw_menu()
         elif self.state == "DIFFICULTY":
             self.draw_difficulty_menu()
+        elif self.state == "NAMES":
+            self.draw_names_menu()
         elif self.state == "SIZE":
             self.draw_size_menu()
         elif self.state == "GAME":
@@ -1218,7 +1489,7 @@ class GameUI:
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     if self.state == "GAME":
                         self.go_back_from_game()
-                    elif self.state in ["SIZE", "DIFFICULTY", "GAMEOVER"]:
+                    elif self.state in ["SIZE", "DIFFICULTY", "GAMEOVER", "NAMES"]:
                         self.go_back()
                     else:
                         self.running = False
@@ -1228,6 +1499,17 @@ class GameUI:
 
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     self.add_click_effect(event.pos)
+
+                # text input
+                if self.state == "NAMES":
+                    if self.name_input_1:
+                        res1 = self.name_input_1.handle_event(event)
+                        if res1 == "submit":
+                            self.goto_size_from_names()
+                    if self.name_input_2:
+                        res2 = self.name_input_2.handle_event(event)
+                        if res2 == "submit":
+                            self.goto_size_from_names()
 
                 button_clicked = False
 
@@ -1248,9 +1530,12 @@ class GameUI:
                     and not self.game_over
                     and not self.input_locked
                     and not self.ai_thinking
-                    and self.current_turn == PLAYER
                 ):
-                    self.handle_game_click(event.pos)
+                    if self.play_mode == "AI":
+                        if self.current_turn == PLAYER:
+                            self.handle_game_click(event.pos)
+                    else:
+                        self.handle_game_click(event.pos)
 
             self.update(dt)
             self.draw()
