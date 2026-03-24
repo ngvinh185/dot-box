@@ -3,8 +3,12 @@
     "high_score": 8,
     "4x5": {
         "easy": {
+            "wins": 1,
+            "high_score": 13
+        },
+        "hard": {
             "wins": 0,
-            "high_score": 10
+            "high_score": 0
         }
     }
 }
