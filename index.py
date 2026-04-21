@@ -15,8 +15,8 @@ PLAYER = 0
 AI = 1
 PLAYER2 = 2
 
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 820
+WINDOW_WIDTH = 1500
+WINDOW_HEIGHT = 800
 
 # ===== THEME SÁNG HƠN + DỊU HƠN =====
 THEME = {
@@ -44,6 +44,102 @@ THEME = {
 MAX_RIPPLES = 6
 MAX_PARTICLES = 24
 HIGHSCORE_FILE = "highscores.json"
+SETTINGS_FILE = "game_settings.json"
+
+TRANSLATIONS = {
+    "vi": {
+        "menu_title": "DOTS & BOXES",
+        "choose_mode": "Chon che do choi",
+        "player_vs_ai": "NGUOI CHOI VS AI",
+        "player_vs_player": "NGUOI CHOI VS NGUOI CHOI",
+        "settings": "CAI DAT",
+        "settings_hint": "Cai dat",
+        "exit": "THOAT",
+        "difficulty_title": "CHON DO KHO",
+        "current": "Hien tai: {value}",
+        "easy": "DE",
+        "medium": "TRUNG BINH",
+        "hard": "KHO",
+        "back": "QUAY LAI",
+        "names_title": "NHAP TEN NGUOI CHOI",
+        "player1": "Nguoi choi 1",
+        "player2": "Nguoi choi 2",
+        "enter_p1": "Nhap ten Nguoi choi 1",
+        "enter_p2": "Nhap ten Nguoi choi 2",
+        "continue": "TIEP TUC",
+        "size_title": "CHON KICH THUOC BAN",
+        "best": "Diem cao nhat: {value}",
+        "settings_title": "CAI DAT",
+        "volume": "Am luong",
+        "language": "Ngon ngu",
+        "toggle_language": "DOI NGON NGU",
+        "confirm": "XAC NHAN",
+        "avatar_p1": "Hinh dai dien P1",
+        "avatar_p2": "Hinh dai dien P2",
+        "lang_en": "Tieng Anh",
+        "lang_vi": "Tieng Viet",
+        "no_icons": "Khong co icon trong img/",
+        "animal_cat": "Meo",
+        "animal_bear": "Gau",
+        "animal_frog": "Ech",
+        "animal_fox": "Cao",
+        "avatar_selected": "Avatar {player}: {name}",
+        "avatar_none": "Chua co avatar",
+        "click_lines": "Nhan vao cac canh de choi",
+        "mode_ai": "Che do: {rows}x{cols} | {diff} | Best: {best}",
+        "mode_pvp": "Che do: {rows}x{cols} | PvP",
+        "turn_player": "LUOT {name}",
+        "turn_ai": "LUOT AI",
+        "wins": "{name} THANG!",
+        "draw": "HOA!",
+    },
+    "en": {
+        "menu_title": "DOTS & BOXES",
+        "choose_mode": "Choose game mode",
+        "player_vs_ai": "PLAYER VS AI",
+        "player_vs_player": "PLAYER VS PLAYER",
+        "settings": "SETTINGS",
+        "settings_hint": "Settings",
+        "exit": "EXIT",
+        "difficulty_title": "CHOOSE DIFFICULTY",
+        "current": "Current: {value}",
+        "easy": "EASY",
+        "medium": "MEDIUM",
+        "hard": "HARD",
+        "back": "BACK",
+        "names_title": "ENTER PLAYER NAMES",
+        "player1": "Player 1",
+        "player2": "Player 2",
+        "enter_p1": "Enter Player 1 name",
+        "enter_p2": "Enter Player 2 name",
+        "continue": "CONTINUE",
+        "size_title": "CHOOSE BOARD SIZE",
+        "best": "Best: {value}",
+        "settings_title": "SETTINGS",
+        "volume": "Volume",
+        "language": "Language",
+        "toggle_language": "TOGGLE LANGUAGE",
+        "confirm": "CONFIRM",
+        "avatar_p1": "Avatar P1",
+        "avatar_p2": "Avatar P2",
+        "lang_en": "English",
+        "lang_vi": "Vietnamese",
+        "no_icons": "No icons in img/",
+        "animal_cat": "Cat",
+        "animal_bear": "Bear",
+        "animal_frog": "Frog",
+        "animal_fox": "Fox",
+        "avatar_selected": "Avatar {player}: {name}",
+        "avatar_none": "No avatar selected",
+        "click_lines": "Click lines to play",
+        "mode_ai": "Mode: {rows}x{cols} | {diff} | Best: {best}",
+        "mode_pvp": "Mode: {rows}x{cols} | PvP",
+        "turn_player": "{name} TURN",
+        "turn_ai": "AI TURN",
+        "wins": "{name} WINS!",
+        "draw": "DRAW!",
+    },
+}
 
 # =========================
 # HELPERS
@@ -212,6 +308,99 @@ class TextInput:
             cursor_y2 = self.rect.bottom - 12
             pygame.draw.line(surface, THEME["accent"], (cursor_x, cursor_y1), (cursor_x, cursor_y2), 2)
 
+
+class Slider:
+    def __init__(self, rect, min_value=0, max_value=100, value=70, on_change=None):
+        self.rect = pygame.Rect(rect)
+        self.min_value = min_value
+        self.max_value = max_value
+        self.value = clamp(value, min_value, max_value)
+        self.on_change = on_change
+        self.dragging = False
+
+    def ratio(self):
+        if self.max_value == self.min_value:
+            return 0.0
+        return (self.value - self.min_value) / (self.max_value - self.min_value)
+
+    def set_from_x(self, x):
+        t = clamp((x - self.rect.x) / self.rect.w, 0.0, 1.0)
+        new_value = int(round(self.min_value + t * (self.max_value - self.min_value)))
+        if new_value != self.value:
+            self.value = new_value
+            if self.on_change:
+                self.on_change(self.value)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rect.collidepoint(event.pos):
+                self.dragging = True
+                self.set_from_x(event.pos[0])
+                return True
+        elif event.type == pygame.MOUSEMOTION and self.dragging:
+            self.set_from_x(event.pos[0])
+            return True
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.dragging:
+            self.dragging = False
+            self.set_from_x(event.pos[0])
+            return True
+        return False
+
+    def draw(self, surface):
+        track_rect = pygame.Rect(self.rect.x, self.rect.centery - 4, self.rect.w, 8)
+        fill_w = int(track_rect.w * self.ratio())
+        fill_rect = pygame.Rect(track_rect.x, track_rect.y, fill_w, track_rect.h)
+
+        draw_round_rect(surface, track_rect, (220, 229, 247), 8)
+        if fill_rect.w > 0:
+            draw_round_rect(surface, fill_rect, THEME["accent"], 8)
+
+        knob_x = track_rect.x + fill_w
+        knob_y = track_rect.centery
+        pygame.draw.circle(surface, (255, 255, 255), (knob_x, knob_y), 12)
+        pygame.draw.circle(surface, THEME["accent2"], (knob_x, knob_y), 9)
+
+
+class GearButton:
+    def __init__(self, rect, action=None):
+        self.rect = pygame.Rect(rect)
+        self.action = action
+        self.hovered = False
+        self.scale_t = 0.0
+
+    def update(self, mouse_pos):
+        self.hovered = self.rect.collidepoint(mouse_pos)
+        target = 1.0 if self.hovered else 0.0
+        self.scale_t = lerp(self.scale_t, target, 0.2)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.hovered:
+            if self.action:
+                self.action()
+            return True
+        return False
+
+    def draw(self, surface):
+        r = self.rect.inflate(int(4 * self.scale_t), int(4 * self.scale_t))
+        draw_round_rect(surface, r, THEME["panel2"], 16)
+        draw_round_rect_outline(surface, r, (255, 255, 255), 2, 16)
+
+        cx, cy = r.center
+        gear_r = 12
+        tooth_len = 6
+        color = THEME["accent"] if self.hovered else THEME["text"]
+
+        for k in range(8):
+            angle = (math.pi * 2 / 8) * k
+            x1 = int(cx + math.cos(angle) * (gear_r - 1))
+            y1 = int(cy + math.sin(angle) * (gear_r - 1))
+            x2 = int(cx + math.cos(angle) * (gear_r + tooth_len))
+            y2 = int(cy + math.sin(angle) * (gear_r + tooth_len))
+            pygame.draw.line(surface, color, (x1, y1), (x2, y2), 3)
+
+        pygame.draw.circle(surface, color, (cx, cy), gear_r, 3)
+        pygame.draw.circle(surface, color, (cx, cy), 4)
+
 # =========================
 # UI
 # =========================
@@ -252,6 +441,31 @@ class GameUI:
         # Player names
         self.player1_name = "PLAYER 1"
         self.player2_name = "PLAYER 2"
+
+        # Settings
+        self.language = "en"
+        self.pending_language = "en"
+        self.sfx_volume = 70
+        self.default_music_path = ""
+        self.current_music_playing = ""
+        self.avatar_dir = "img"
+        self.avatar_options = []
+        self.avatar_labels = {}
+        self.avatar_id_p1 = ""
+        self.avatar_id_p2 = ""
+        self.avatar_surfaces = {}
+        self.load_avatar_assets(74)
+        self.slider_volume = None
+        self.settings_gear_button = None
+
+        self.audio_enabled = False
+        try:
+            pygame.mixer.init()
+            self.audio_enabled = True
+        except Exception:
+            self.audio_enabled = False
+
+        self.default_music_path = self.discover_default_music()
 
         # Input
         self.name_input_1 = None
@@ -307,12 +521,17 @@ class GameUI:
         self.frame_game = None
         self.frame_gameover = None
         self.frame_names = None
+        self.frame_settings = None
 
         # In-game back button
         self.back_button_game = None
 
         # High score
         self.highscores = self.load_highscores()
+
+        self.load_settings()
+        self.apply_volume()
+        self.apply_music(force_reload=True)
 
         self.build_bg_surface()
         self.build_frames()
@@ -378,6 +597,205 @@ class GameUI:
             self.highscores[key] = cur
             self.save_highscores()
 
+    def tr(self, key, **kwargs):
+        lang_data = TRANSLATIONS.get(self.language, TRANSLATIONS["en"])
+        text = lang_data.get(key, key)
+        if kwargs:
+            try:
+                return text.format(**kwargs)
+            except Exception:
+                return text
+        return text
+
+    def tr_with_lang(self, key, lang, **kwargs):
+        lang_data = TRANSLATIONS.get(lang, TRANSLATIONS["en"])
+        text = lang_data.get(key, key)
+        if kwargs:
+            try:
+                return text.format(**kwargs)
+            except Exception:
+                return text
+        return text
+
+    def load_settings(self):
+        default_p1 = self.avatar_options[0] if self.avatar_options else ""
+        default_p2 = self.avatar_options[1] if len(self.avatar_options) > 1 else default_p1
+        defaults = {
+            "language": "en",
+            "volume": 70,
+            "avatar_id_p1": default_p1,
+            "avatar_id_p2": default_p2,
+        }
+        data = defaults.copy()
+
+        if os.path.exists(SETTINGS_FILE):
+            try:
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    data.update(loaded)
+            except Exception:
+                pass
+
+        self.language = data.get("language", "en")
+        if self.language not in TRANSLATIONS:
+            self.language = "en"
+        self.pending_language = self.language
+
+        self.sfx_volume = int(clamp(int(data.get("volume", 70)), 0, 100))
+        self.avatar_id_p1 = data.get("avatar_id_p1", default_p1)
+        self.avatar_id_p2 = data.get("avatar_id_p2", default_p2)
+        if self.avatar_id_p1 not in self.avatar_options:
+            self.avatar_id_p1 = default_p1
+        if self.avatar_id_p2 not in self.avatar_options:
+            self.avatar_id_p2 = default_p2
+
+    def save_settings(self):
+        try:
+            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "language": self.language,
+                        "volume": self.sfx_volume,
+                        "avatar_id_p1": self.avatar_id_p1,
+                        "avatar_id_p2": self.avatar_id_p2,
+                    },
+                    f,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+        except Exception:
+            pass
+
+    def apply_volume(self):
+        if self.audio_enabled and pygame.mixer.get_init():
+            vol = clamp(self.sfx_volume / 100.0, 0.0, 1.0)
+            pygame.mixer.music.set_volume(vol)
+
+    def on_volume_changed(self, value):
+        self.sfx_volume = int(clamp(value, 0, 100))
+        self.apply_volume()
+        self.save_settings()
+
+    def discover_default_music(self):
+        exts = (".mp3", ".ogg", ".wav")
+        music_dir = os.path.join(os.getcwd(), "music")
+        if not os.path.isdir(music_dir):
+            return ""
+
+        priority = [
+            "music.mp3", "bgm.mp3", "theme.mp3", "1.mp3",
+            "music.ogg", "bgm.ogg", "theme.ogg", "1.ogg",
+            "music.wav", "bgm.wav", "theme.wav", "1.wav",
+        ]
+
+        for name in priority:
+            path = os.path.join(music_dir, name)
+            if os.path.exists(path):
+                return path
+
+        files = [f for f in sorted(os.listdir(music_dir)) if f.lower().endswith(exts)]
+        if files:
+            return os.path.join(music_dir, files[0])
+        return ""
+
+    def resolve_music_path(self):
+        if self.default_music_path and os.path.exists(self.default_music_path):
+            return self.default_music_path
+        return ""
+
+    def apply_music(self, force_reload=False):
+        if not self.audio_enabled or not pygame.mixer.get_init():
+            return
+
+        target = self.resolve_music_path()
+        if not target:
+            pygame.mixer.music.stop()
+            self.current_music_playing = ""
+            return
+
+        if force_reload or self.current_music_playing != target:
+            try:
+                pygame.mixer.music.load(target)
+                pygame.mixer.music.play(-1)
+                self.current_music_playing = target
+            except Exception:
+                pygame.mixer.music.stop()
+                self.current_music_playing = ""
+                return
+
+        self.apply_volume()
+
+    def cycle_avatar(self, player_index, step):
+        if not self.avatar_options:
+            return
+        if player_index == 1:
+            idx = self.avatar_options.index(self.avatar_id_p1)
+            self.avatar_id_p1 = self.avatar_options[(idx + step) % len(self.avatar_options)]
+        else:
+            idx = self.avatar_options.index(self.avatar_id_p2)
+            self.avatar_id_p2 = self.avatar_options[(idx + step) % len(self.avatar_options)]
+        self.save_settings()
+
+    def get_avatar_name(self, avatar_id):
+        return self.avatar_labels.get(avatar_id, avatar_id)
+
+    def load_avatar_assets(self, size):
+        self.avatar_options = []
+        self.avatar_labels = {}
+        self.avatar_surfaces = {}
+
+        full_dir = os.path.join(os.getcwd(), self.avatar_dir)
+        if not os.path.isdir(full_dir):
+            return
+
+        allowed = (".png", ".jpg", ".jpeg", ".webp", ".bmp")
+        files = [f for f in sorted(os.listdir(full_dir)) if f.lower().endswith(allowed)]
+
+        for filename in files:
+            path = os.path.join(full_dir, filename)
+            try:
+                img = pygame.image.load(path).convert_alpha()
+                img = pygame.transform.smoothscale(img, (size, size))
+            except Exception:
+                continue
+
+            avatar_id = filename
+            display = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ")
+            self.avatar_options.append(avatar_id)
+            self.avatar_labels[avatar_id] = display
+            self.avatar_surfaces[avatar_id] = img
+
+    def toggle_language(self):
+        self.pending_language = "vi" if self.pending_language == "en" else "en"
+        self.change_state("SETTINGS")
+
+    def confirm_language(self):
+        self.language = self.pending_language
+        self.save_settings()
+        self.change_state("MENU")
+
+    def draw_player_avatar(self, center, player_index=1):
+        size = 62
+        x = center[0] - size // 2
+        y = center[1] - size // 2
+        avatar_rect = pygame.Rect(x, y, size, size)
+
+        draw_round_rect(self.screen, avatar_rect, (255, 255, 255), 18)
+        draw_round_rect_outline(self.screen, avatar_rect, THEME["accent2"], 3, 18)
+
+        avatar_id = self.avatar_id_p1 if player_index == 1 else self.avatar_id_p2
+        avatar_surface = self.avatar_surfaces.get(avatar_id)
+
+        if avatar_surface is not None:
+            img = pygame.transform.smoothscale(avatar_surface, (size - 8, size - 8))
+            self.screen.blit(img, (x + 4, y + 4))
+            return
+
+        pygame.draw.circle(self.screen, THEME["panel2"], avatar_rect.center, 22)
+        initials = "P1" if player_index == 1 else "P2"
+        draw_text_center(self.screen, initials, self.font_tiny, THEME["text"], avatar_rect.center)
+
     # =========================
     # FRAME LAYOUTS
     # =========================
@@ -419,6 +837,13 @@ class GameUI:
             H // 2 - min(640, H - pad_y) // 2,
             min(760, W - pad_x),
             min(640, H - pad_y)
+        )
+
+        self.frame_settings = pygame.Rect(
+            W // 2 - min(820, W - pad_x) // 2,
+            H // 2 - min(680, H - pad_y) // 2,
+            min(820, W - pad_x),
+            min(680, H - pad_y)
         )
 
         game_w = min(1080, W - 120)
@@ -594,6 +1019,7 @@ class GameUI:
         self.state = new_state
         self.buttons.clear()
         self.back_button_game = None
+        self.settings_gear_button = None
 
         if new_state == "LOADING":
             return
@@ -601,14 +1027,23 @@ class GameUI:
         if new_state == "MENU":
             bw = min(360, self.frame_menu.w // 2)
             bh = 66
-            gap = 22
-            rects = stack_center_rects(self.frame_menu, [(bw, bh), (bw, bh), (bw, bh)], gap=gap, offset_y=100)
+            gap = 16
+            rects = stack_center_rects(
+                self.frame_menu,
+                [(bw, bh), (bw, bh), (bw, bh)],
+                gap=gap,
+                offset_y=120,
+            )
             self.buttons = [
-                Button(rects[0], "PLAYER VS AI", self.goto_difficulty, font=self.font_mid),
-                Button(rects[1], "PLAYER VS PLAYER", self.goto_names, font=self.font_mid),
-                Button(rects[2], "EXIT", self.exit_game,
+                Button(rects[0], self.tr("player_vs_ai"), self.goto_difficulty, font=self.font_mid),
+                Button(rects[1], self.tr("player_vs_player"), self.goto_names, font=self.font_mid),
+                Button(rects[2], self.tr("exit"), self.exit_game,
                        base_color=(255, 226, 232), hover_color=THEME["danger"], font=self.font_mid),
             ]
+            self.settings_gear_button = GearButton(
+                pygame.Rect(self.frame_menu.right - 70, self.frame_menu.y + 18, 48, 48),
+                action=self.goto_settings,
+            )
 
         elif new_state == "DIFFICULTY":
             bw = min(350, self.frame_diff.w // 2)
@@ -620,10 +1055,10 @@ class GameUI:
                 gap=gap, offset_y=78
             )
             self.buttons = [
-                Button(rects[0], "EASY", lambda: self.set_difficulty_and_goto_size("easy"), font=self.font_mid),
-                Button(rects[1], "MEDIUM", lambda: self.set_difficulty_and_goto_size("medium"), font=self.font_mid),
-                Button(rects[2], "HARD", lambda: self.set_difficulty_and_goto_size("hard"), font=self.font_mid),
-                Button(rects[3], "BACK", self.go_back, font=self.font_small),
+                Button(rects[0], self.tr("easy"), lambda: self.set_difficulty_and_goto_size("easy"), font=self.font_mid),
+                Button(rects[1], self.tr("medium"), lambda: self.set_difficulty_and_goto_size("medium"), font=self.font_mid),
+                Button(rects[2], self.tr("hard"), lambda: self.set_difficulty_and_goto_size("hard"), font=self.font_mid),
+                Button(rects[3], self.tr("back"), self.go_back, font=self.font_small),
             ]
 
         elif new_state == "NAMES":
@@ -636,23 +1071,23 @@ class GameUI:
             self.name_input_1 = TextInput(
                 pygame.Rect(cx - input_w // 2, self.frame_names.y + 220, input_w, input_h),
                 text=self.player1_name if self.player1_name != "PLAYER 1" else "",
-                placeholder="Enter Player 1 name",
+                placeholder=self.tr("enter_p1"),
                 font=self.font_small,
                 max_len=14
             )
             self.name_input_2 = TextInput(
                 pygame.Rect(cx - input_w // 2, self.frame_names.y + 320, input_w, input_h),
                 text=self.player2_name if self.player2_name != "PLAYER 2" else "",
-                placeholder="Enter Player 2 name",
+                placeholder=self.tr("enter_p2"),
                 font=self.font_small,
                 max_len=14
             )
 
             self.buttons = [
                 Button(pygame.Rect(cx - 175, self.frame_names.bottom - 130, 350, 58),
-                       "CONTINUE", self.goto_size_from_names, font=self.font_mid),
+                       self.tr("continue"), self.goto_size_from_names, font=self.font_mid),
                 Button(pygame.Rect(cx - 80, self.frame_names.bottom - 58, 160, 48),
-                       "BACK", self.go_back, font=self.font_small),
+                       self.tr("back"), self.go_back, font=self.font_small),
             ]
 
         elif new_state == "SIZE":
@@ -680,15 +1115,83 @@ class GameUI:
                 Button(rect_1, "3 x 4", lambda: self.start_game((3, 4)), font=self.font_mid),
                 Button(rect_2, "4 x 5", lambda: self.start_game((4, 5)), font=self.font_mid),
                 Button(rect_3, "5 x 6", lambda: self.start_game((5, 6)), font=self.font_mid),
-                Button(rect_back, "BACK", self.go_back, font=self.font_small),
+                Button(rect_back, self.tr("back"), self.go_back, font=self.font_small),
+            ]
+
+        elif new_state == "SETTINGS":
+            fr = self.frame_settings
+            cx = fr.centerx
+            control_x = fr.x + 360
+            row1_y = fr.y + 230
+            row2_y = fr.y + 306
+            row3_y = fr.y + 382
+            row4_y = fr.y + 458
+            lang_toggle_text = self.tr_with_lang("lang_vi", self.pending_language) if self.pending_language == "vi" else self.tr_with_lang("lang_en", self.pending_language)
+            confirm_text = self.tr_with_lang("confirm", self.pending_language)
+            back_text = self.tr_with_lang("back", self.pending_language)
+
+            self.slider_volume = Slider(
+                pygame.Rect(control_x, row1_y + 6, 300, 20),
+                min_value=0,
+                max_value=100,
+                value=self.sfx_volume,
+                on_change=self.on_volume_changed,
+            )
+
+            self.buttons = [
+                Button(
+                    pygame.Rect(control_x, row2_y - 8, 300, 42),
+                    lang_toggle_text,
+                    self.toggle_language,
+                    font=self.font_small,
+                ),
+                Button(
+                    pygame.Rect(control_x, row3_y - 8, 54, 42),
+                    "<",
+                    lambda: self.cycle_avatar(1, -1),
+                    font=self.font_mid,
+                ),
+                Button(
+                    pygame.Rect(control_x + 246, row3_y - 8, 54, 42),
+                    ">",
+                    lambda: self.cycle_avatar(1, 1),
+                    font=self.font_mid,
+                ),
+                Button(
+                    pygame.Rect(control_x, row4_y - 8, 54, 42),
+                    "<",
+                    lambda: self.cycle_avatar(2, -1),
+                    font=self.font_mid,
+                ),
+                Button(
+                    pygame.Rect(control_x + 246, row4_y - 8, 54, 42),
+                    ">",
+                    lambda: self.cycle_avatar(2, 1),
+                    font=self.font_mid,
+                ),
+                Button(
+                    pygame.Rect(cx + 20, fr.bottom - 52, 180, 42),
+                    confirm_text,
+                    self.confirm_language,
+                    font=self.font_small,
+                ),
+                Button(
+                    pygame.Rect(cx - 200, fr.bottom - 52, 180, 42),
+                    back_text,
+                    self.go_back,
+                    font=self.font_small,
+                ),
             ]
 
         elif new_state == "GAME":
             self.back_button_game = Button(
-                pygame.Rect(self.width - 160, self.frame_game.bottom + 22, 125, 42),
-                "BACK",
+                pygame.Rect(24, 24, 58, 42),
+                "<-",
                 self.go_back_from_game,
-                font=self.font_small
+                base_color=(225, 236, 255),
+                hover_color=(170, 196, 255),
+                text_color=THEME["text"],
+                font=self.font_mid
             )
 
         elif new_state == "GAMEOVER":
@@ -701,7 +1204,7 @@ class GameUI:
             self.buttons = [
                 Button(rects[0], "PLAY AGAIN", lambda: self.start_game(self.mode), font=self.font_mid),
                 Button(rects[1], "MENU", self.goto_menu, font=self.font_mid),
-                Button(rects[2], "BACK", self.go_back, font=self.font_small),
+                Button(rects[2], self.tr("back"), self.go_back, font=self.font_small),
             ]
 
     def goto_menu(self):
@@ -713,6 +1216,10 @@ class GameUI:
 
     def goto_names(self):
         self.change_state("NAMES")
+
+    def goto_settings(self):
+        self.pending_language = self.language
+        self.change_state("SETTINGS")
 
     def goto_size(self):
         self.change_state("SIZE")
@@ -751,6 +1258,10 @@ class GameUI:
             return
 
         if self.state == "DIFFICULTY":
+            self.change_state("MENU")
+            return
+
+        if self.state == "SETTINGS":
             self.change_state("MENU")
             return
 
@@ -945,11 +1456,21 @@ class GameUI:
         header_bottom = btn_top - block_gap
         title_cy = header_bottom - title_h // 2
 
-        draw_text_center(self.screen, "DOTS & BOXES", self.font_title,
+        draw_text_center(self.screen, self.tr("menu_title"), self.font_title,
                          THEME["text"], (cx, title_cy), glow=True, glow_color=THEME["accent2"])
 
-        draw_text_center(self.screen, "Choose game mode", self.font_small,
+        draw_text_center(self.screen, self.tr("choose_mode"), self.font_small,
                          THEME["subtext"], (cx, title_cy + 58))
+
+        if self.settings_gear_button:
+            self.settings_gear_button.draw(self.screen)
+            draw_text_center(
+                self.screen,
+                self.tr("settings_hint"),
+                self.font_tiny,
+                THEME["subtext"],
+                (self.settings_gear_button.rect.centerx, self.settings_gear_button.rect.bottom + 14),
+            )
 
         for b in self.buttons:
             b.draw(self.screen)
@@ -967,10 +1488,10 @@ class GameUI:
         btn_top = self.buttons[0].rect.top if self.buttons else fr.centery
         title_cy = btn_top - block_gap - title_h // 2
 
-        draw_text_center(self.screen, "CHOOSE DIFFICULTY", self.font_title,
+        draw_text_center(self.screen, self.tr("difficulty_title"), self.font_title,
                          THEME["text"], (cx, title_cy), glow=True, glow_color=THEME["accent2"])
 
-        draw_text_center(self.screen, f"Current: {self.difficulty.upper()}", self.font_small,
+        draw_text_center(self.screen, self.tr("current", value=self.difficulty.upper()), self.font_small,
                          THEME["accent"], (cx, title_cy + 56))
 
         for b in self.buttons:
@@ -984,11 +1505,11 @@ class GameUI:
 
         cx = fr.centerx
 
-        draw_text_center(self.screen, "ENTER PLAYER NAMES", self.font_title,
+        draw_text_center(self.screen, self.tr("names_title"), self.font_title,
                          THEME["text"], (cx, fr.y + 90), glow=True, glow_color=THEME["accent2"])
 
-        draw_text_center(self.screen, "Player 1", self.font_small, THEME["player"], (cx, fr.y + 195))
-        draw_text_center(self.screen, "Player 2", self.font_small, THEME["p2"], (cx, fr.y + 295))
+        draw_text_center(self.screen, self.tr("player1"), self.font_small, THEME["player"], (cx, fr.y + 195))
+        draw_text_center(self.screen, self.tr("player2"), self.font_small, THEME["p2"], (cx, fr.y + 295))
 
         if self.name_input_1:
             self.name_input_1.draw(self.screen)
@@ -1011,7 +1532,7 @@ class GameUI:
         btn_top = self.buttons[0].rect.top if self.buttons else fr.centery
         title_cy = btn_top - block_gap - title_h // 2
 
-        draw_text_center(self.screen, "CHOOSE BOARD SIZE", self.font_title,
+        draw_text_center(self.screen, self.tr("size_title"), self.font_title,
                          THEME["text"], (cx, title_cy), glow=True, glow_color=THEME["accent2"])
 
         if self.play_mode == "AI":
@@ -1029,17 +1550,66 @@ class GameUI:
             if len(self.buttons) >= 3:
                 best_offset = 24
                 draw_text_center(
-                    self.screen, f"Best: {hs_34}", self.font_tiny, THEME["success"],
+                    self.screen, self.tr("best", value=hs_34), self.font_tiny, THEME["success"],
                     (self.buttons[0].rect.centerx, self.buttons[0].rect.bottom + best_offset)
                 )
                 draw_text_center(
-                    self.screen, f"Best: {hs_45}", self.font_tiny, THEME["success"],
+                    self.screen, self.tr("best", value=hs_45), self.font_tiny, THEME["success"],
                     (self.buttons[1].rect.centerx, self.buttons[1].rect.bottom + best_offset)
                 )
                 draw_text_center(
-                    self.screen, f"Best: {hs_56}", self.font_tiny, THEME["success"],
+                    self.screen, self.tr("best", value=hs_56), self.font_tiny, THEME["success"],
                     (self.buttons[2].rect.centerx, self.buttons[2].rect.bottom + best_offset)
                 )
+
+        for b in self.buttons:
+            b.draw(self.screen)
+
+    def draw_settings_menu(self):
+        self.draw_bg()
+        fr = self.frame_settings
+        preview_lang = self.pending_language
+        trp = lambda key: self.tr_with_lang(key, preview_lang)
+        draw_round_rect(self.screen, fr, THEME["panel"], 30)
+        draw_round_rect_outline(self.screen, fr, (255, 255, 255), 2, 30)
+
+        cx = fr.centerx
+        draw_text_center(
+            self.screen,
+            trp("settings_title"),
+            self.font_title,
+            THEME["text"],
+            (cx, fr.y + 84),
+            glow=True,
+            glow_color=THEME["accent2"],
+        )
+
+        label_x = fr.x + 120
+        row1_y = fr.y + 230
+        row2_y = fr.y + 306
+        row3_y = fr.y + 382
+        row4_y = fr.y + 458
+
+        draw_text_left(self.screen, f"{trp('volume').upper()}:", self.font_mid, THEME["text"], (label_x, row1_y))
+        draw_text_left(self.screen, f"{trp('language').upper()}:", self.font_mid, THEME["text"], (label_x, row2_y))
+        draw_text_left(self.screen, f"{trp('avatar_p1').upper()}:", self.font_mid, THEME["text"], (label_x, row3_y))
+        draw_text_left(self.screen, f"{trp('avatar_p2').upper()}:", self.font_mid, THEME["text"], (label_x, row4_y))
+
+        draw_text_left(self.screen, f"{self.sfx_volume}%", self.font_small, THEME["accent"], (fr.x + 675, row1_y + 3))
+        if self.slider_volume:
+            self.slider_volume.draw(self.screen)
+
+        has_icons = len(self.avatar_options) > 0
+        if has_icons:
+            self.draw_player_avatar((fr.x + 510, row3_y + 18), player_index=1)
+            self.draw_player_avatar((fr.x + 510, row4_y + 18), player_index=2)
+        else:
+            draw_text_left(self.screen, trp("no_icons"), self.font_small, THEME["danger"], (fr.x + 360, row3_y + 3))
+
+        # Disable arrow buttons visually when there are no icons to cycle.
+        if not has_icons:
+            for i in [1, 2, 3, 4]:
+                draw_round_rect_outline(self.screen, self.buttons[i].rect, THEME["danger"], 2, 12)
 
         for b in self.buttons:
             b.draw(self.screen)
@@ -1172,6 +1742,9 @@ class GameUI:
         draw_round_rect(self.screen, panel, THEME["panel"], 24)
         draw_round_rect_outline(self.screen, panel, (255, 255, 255), 2, 24)
 
+        self.draw_player_avatar((panel.x + 112, panel.y + 54), player_index=1)
+        self.draw_player_avatar((panel.right - 54, panel.y + 54), player_index=2)
+
         cx = panel.centerx
         left_x = panel.x + panel.w // 4
         right_x = panel.x + panel.w * 3 // 4
@@ -1201,14 +1774,21 @@ class GameUI:
             turn = f"{self.player1_name} TURN" if self.current_turn == PLAYER else f"{self.player2_name} TURN"
             turn_color = THEME["player"] if self.current_turn == PLAYER else THEME["p2"]
 
+        if self.current_turn == PLAYER:
+            turn = self.tr("turn_player", name=self.player1_name)
+        elif self.play_mode == "AI":
+            turn = self.tr("turn_ai")
+        else:
+            turn = self.tr("turn_player", name=self.player2_name)
+
         draw_text_center(self.screen, turn, self.font_small, turn_color, (cx, turn_y))
-        draw_text_center(self.screen, "Click lines to play", self.font_tiny, THEME["subtext"], (cx, hint_y))
+        draw_text_center(self.screen, self.tr("click_lines"), self.font_tiny, THEME["subtext"], (cx, hint_y))
 
         if self.play_mode == "AI":
             hs = self.get_highscore()
             draw_text_left(
                 self.screen,
-                f"Mode: {self.mode[0]}x{self.mode[1]} | {self.difficulty.upper()} | Best: {hs}",
+                self.tr("mode_ai", rows=self.mode[0], cols=self.mode[1], diff=self.difficulty.upper(), best=hs),
                 self.font_tiny,
                 THEME["success"],
                 (28, self.frame_game.bottom + 16)
@@ -1216,7 +1796,7 @@ class GameUI:
         else:
             draw_text_left(
                 self.screen,
-                f"Mode: {self.mode[0]}x{self.mode[1]} | PvP",
+                self.tr("mode_pvp", rows=self.mode[0], cols=self.mode[1]),
                 self.font_tiny,
                 THEME["success"],
                 (28, self.frame_game.bottom + 16)
@@ -1463,6 +2043,8 @@ class GameUI:
             b.update(mouse_pos)
         if self.back_button_game:
             self.back_button_game.update(mouse_pos)
+        if self.settings_gear_button:
+            self.settings_gear_button.update(mouse_pos)
 
         if self.name_input_1:
             self.name_input_1.update(dt)
@@ -1488,6 +2070,8 @@ class GameUI:
             self.draw_names_menu()
         elif self.state == "SIZE":
             self.draw_size_menu()
+        elif self.state == "SETTINGS":
+            self.draw_settings_menu()
         elif self.state == "GAME":
             self.draw_game()
         elif self.state == "GAMEOVER":
@@ -1508,7 +2092,7 @@ class GameUI:
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     if self.state == "GAME":
                         self.go_back_from_game()
-                    elif self.state in ["SIZE", "DIFFICULTY", "GAMEOVER", "NAMES"]:
+                    elif self.state in ["SIZE", "DIFFICULTY", "GAMEOVER", "NAMES", "SETTINGS"]:
                         self.go_back()
                     else:
                         self.running = False
@@ -1530,6 +2114,9 @@ class GameUI:
                         if res2 == "submit":
                             self.goto_size_from_names()
 
+                if self.state == "SETTINGS" and self.slider_volume:
+                    self.slider_volume.handle_event(event)
+
                 button_clicked = False
 
                 for b in self.buttons:
@@ -1539,6 +2126,10 @@ class GameUI:
 
                 if not button_clicked and self.back_button_game:
                     if self.back_button_game.handle_event(event):
+                        button_clicked = True
+
+                if not button_clicked and self.settings_gear_button:
+                    if self.settings_gear_button.handle_event(event):
                         button_clicked = True
 
                 if (
