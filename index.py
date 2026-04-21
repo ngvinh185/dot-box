@@ -448,6 +448,9 @@ class GameUI:
         self.sfx_volume = 70
         self.default_music_path = ""
         self.current_music_playing = ""
+        self.sfx_button = None
+        self.sfx_win = None
+        self.sfx_loss = None
         self.avatar_dir = "img"
         self.avatar_options = []
         self.avatar_labels = {}
@@ -466,6 +469,7 @@ class GameUI:
             self.audio_enabled = False
 
         self.default_music_path = self.discover_default_music()
+        self.load_sound_effects()
 
         # Input
         self.name_input_1 = None
@@ -671,6 +675,9 @@ class GameUI:
         if self.audio_enabled and pygame.mixer.get_init():
             vol = clamp(self.sfx_volume / 100.0, 0.0, 1.0)
             pygame.mixer.music.set_volume(vol)
+            for sfx in [self.sfx_button, self.sfx_win, self.sfx_loss]:
+                if sfx is not None:
+                    sfx.set_volume(vol)
 
     def on_volume_changed(self, value):
         self.sfx_volume = int(clamp(value, 0, 100))
@@ -678,26 +685,60 @@ class GameUI:
         self.save_settings()
 
     def discover_default_music(self):
-        exts = (".mp3", ".ogg", ".wav")
+        return self.find_music_asset_path("game_music")
+
+    def normalize_asset_name(self, name):
+        return name.replace("-", "").replace("_", "").replace(" ", "").lower()
+
+    def find_music_asset_path(self, stem):
         music_dir = os.path.join(os.getcwd(), "music")
         if not os.path.isdir(music_dir):
             return ""
 
-        priority = [
-            "music.mp3", "bgm.mp3", "theme.mp3", "1.mp3",
-            "music.ogg", "bgm.ogg", "theme.ogg", "1.ogg",
-            "music.wav", "bgm.wav", "theme.wav", "1.wav",
-        ]
+        exts = (".mp3", ".ogg", ".wav")
+        target = self.normalize_asset_name(stem)
 
-        for name in priority:
-            path = os.path.join(music_dir, name)
-            if os.path.exists(path):
-                return path
-
-        files = [f for f in sorted(os.listdir(music_dir)) if f.lower().endswith(exts)]
-        if files:
-            return os.path.join(music_dir, files[0])
+        for filename in sorted(os.listdir(music_dir)):
+            full_path = os.path.join(music_dir, filename)
+            if not os.path.isfile(full_path):
+                continue
+            base, ext = os.path.splitext(filename)
+            if ext.lower() not in exts:
+                continue
+            if self.normalize_asset_name(base) == target:
+                return full_path
         return ""
+
+    def load_sound_effects(self):
+        if not self.audio_enabled or not pygame.mixer.get_init():
+            self.sfx_button = None
+            self.sfx_win = None
+            self.sfx_loss = None
+            return
+
+        self.sfx_button = self.load_sound_effect("btn-music")
+        self.sfx_win = self.load_sound_effect("win_game")
+        self.sfx_loss = self.load_sound_effect("game_loss")
+        self.apply_volume()
+
+    def load_sound_effect(self, stem):
+        path = self.find_music_asset_path(stem)
+        if not path:
+            return None
+        try:
+            return pygame.mixer.Sound(path)
+        except Exception:
+            return None
+
+    def play_sound(self, sound_obj):
+        if not self.audio_enabled or not pygame.mixer.get_init():
+            return
+        if sound_obj is None:
+            return
+        try:
+            sound_obj.play()
+        except Exception:
+            pass
 
     def resolve_music_path(self):
         if self.default_music_path and os.path.exists(self.default_music_path):
@@ -1819,6 +1860,15 @@ class GameUI:
     # =========================
     def finish_game(self):
         self.update_highscore()
+
+        if self.play_mode == "AI" and self.game:
+            left_score = self.game.score['player']
+            right_score = self.game.score['AI']
+            if left_score > right_score:
+                self.play_sound(self.sfx_win)
+            elif left_score < right_score:
+                self.play_sound(self.sfx_loss)
+
         self.game_over = True
         self.ai_thinking = False
         self.input_locked = True
@@ -2121,15 +2171,18 @@ class GameUI:
 
                 for b in self.buttons:
                     if b.handle_event(event):
+                        self.play_sound(self.sfx_button)
                         button_clicked = True
                         break
 
                 if not button_clicked and self.back_button_game:
                     if self.back_button_game.handle_event(event):
+                        self.play_sound(self.sfx_button)
                         button_clicked = True
 
                 if not button_clicked and self.settings_gear_button:
                     if self.settings_gear_button.handle_event(event):
+                        self.play_sound(self.sfx_button)
                         button_clicked = True
 
                 if (
